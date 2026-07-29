@@ -59,7 +59,7 @@ export async function trySync() {
  * persona) y las crea localmente. Devuelve true si encontró alguna nueva.
  */
 export async function syncFoldersFromDrive(folder) {
-  if (!folder?.driveFolderId || !navigator.onLine) return false;
+  if (!folder?.driveFolderId || !navigator.onLine) return { foundNew: false, error: null };
   try {
     const [driveChildren, localChildren] = await Promise.all([
       listDriveFolders(folder.driveFolderId),
@@ -73,10 +73,10 @@ export async function syncFoldersFromDrive(folder) {
       await updateFolder(created.id, { driveFolderId: dc.id, driveFolderName: dc.name });
       foundNew = true;
     }
-    return foundNew;
+    return { foundNew, error: null, driveChildrenCount: driveChildren.length };
   } catch (err) {
     console.error('Error sincronizando carpetas desde Drive:', err);
-    return false;
+    return { foundNew: false, error: err.message || String(err) };
   }
 }
 

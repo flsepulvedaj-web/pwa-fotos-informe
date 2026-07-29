@@ -98,8 +98,17 @@ export async function renderFoldersView(container, folderId) {
   if (photos.length) renderPhotoGrid(photos);
   trySync();
   if (currentFolder.driveFolderId) {
-    syncFoldersFromDrive(currentFolder).then((foundNew) => {
-      if (foundNew) renderFoldersView(container, folderId);
+    syncFoldersFromDrive(currentFolder).then(({ foundNew, error, driveChildrenCount }) => {
+      if (foundNew) {
+        renderFoldersView(container, folderId);
+      } else if (error) {
+        toast(`Drive: ${error}`);
+      } else {
+        // TODO(temporal, quitar cuando quede confirmado): para diagnosticar
+        // por qué "Santa Elena" no aparecía, mostramos cuántas subcarpetas
+        // detectó Drive en esta pasada aunque no haya ninguna nueva.
+        toast(`Drive: ${driveChildrenCount ?? 0} carpeta(s) vistas en Drive, nada nuevo.`);
+      }
     });
   }
 

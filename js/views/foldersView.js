@@ -167,6 +167,9 @@ export async function renderFoldersView(container, folderId) {
   container.querySelectorAll('.photo-tile').forEach((tile) => {
     let longPressTimer = null;
     let longPressFired = false;
+    let startX = 0;
+    let startY = 0;
+    const MOVE_TOLERANCE = 12; // px — el dedo tiembla un poco aunque "no se mueva"
 
     const selectThisTile = () => {
       const id = tile.dataset.photoId;
@@ -179,6 +182,8 @@ export async function renderFoldersView(container, folderId) {
 
     tile.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      startX = e.clientX;
+      startY = e.clientY;
       longPressFired = false;
       longPressTimer = setTimeout(() => {
         longPressFired = true;
@@ -191,7 +196,11 @@ export async function renderFoldersView(container, folderId) {
     tile.addEventListener('pointerup', cancelLongPress);
     tile.addEventListener('pointercancel', cancelLongPress);
     tile.addEventListener('pointerleave', cancelLongPress);
-    tile.addEventListener('pointermove', cancelLongPress);
+    tile.addEventListener('pointermove', (e) => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.hypot(dx, dy) > MOVE_TOLERANCE) cancelLongPress();
+    });
     // El navegador muestra su propio menú (Compartir/Copiar/Ver imagen) al
     // mantener presionado sobre una <img>; lo bloqueamos porque el gesto ya
     // lo usamos nosotros para entrar en modo selección.

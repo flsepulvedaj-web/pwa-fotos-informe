@@ -14,6 +14,8 @@ import {
 import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
 import { exportFolderReport } from './exportView.js';
+import { openFolderPicker } from '../googleDrive.js';
+import { trySync } from '../sync.js';
 
 let objectURLs = [];
 
@@ -56,6 +58,7 @@ export async function renderFoldersView(container, folderId) {
           ${subfolders.map((f) => `
             <button class="folder-tile" data-folder-id="${f.id}">
               <span class="folder-icon">📁</span>
+              ${f.driveFolderId ? '<span class="folder-drive-badge" title="Enlazada con Google Drive">☁️</span>' : ''}
               <span class="folder-name">${escapeHTML(f.name)}</span>
               <span class="folder-menu" data-menu-folder-id="${f.id}">⋮</span>
             </button>
@@ -93,6 +96,7 @@ export async function renderFoldersView(container, folderId) {
 
   renderBreadcrumbs(path);
   if (photos.length) renderPhotoGrid(photos);
+  trySync();
 
   // Navegación de subcarpetas
   container.querySelectorAll('.folder-tile').forEach((tile) => {
@@ -269,8 +273,27 @@ export async function renderFoldersView(container, folderId) {
   });
 
   async function openFolderMenu(folder) {
-    const action = await folderActionSheet(folder.name);
-    if (action === 'edit') {
+    const action = await folderActionSheet(folder);
+    if (action === 'link-drive') {
+      try {
+        const picked = await openFolderPicker();
+        if (picked) {
+          await updateFolder(folder.id, { driveFolderId: picked.id, driveFolderName: picked.name });
+          toast(`Enlazada con "${picked.name}" de Drive.`);
+          renderFoldersView(container, folderId);
+        }
+      } catch (err) {
+        console.error(err);
+        toast('No se pudo conectar con Google Drive.');
+      }
+    } else if (action === 'unlink-drive') {
+      const ok = await confirmDialog('¿Desenlazar esta carpeta de Google Drive? Las fotos ya subidas quedan como están; las nuevas dejarán de subirse solas.');
+      if (ok) {
+        await updateFolder(folder.id, { driveFolderId: null, driveFolderName: null });
+        toast('Carpeta desenlazada.');
+        renderFoldersView(container, folderId);
+      }
+    } else if (action === 'edit') {
       const result = await promptDialog({
         title: 'Editar carpeta',
         fields: [
@@ -309,15 +332,23 @@ export async function renderFoldersView(container, folderId) {
   }
 }
 
+const SYNC_ICONS = {
+  pending: { icon: '⏳', title: 'Esperando subir a Drive' },
+  synced: { icon: '☁️', title: 'Respaldada en Drive' },
+  error: { icon: '⚠️', title: 'No se pudo subir a Drive, se reintentará' },
+};
+
 function renderPhotoGrid(photos) {
   const grid = document.getElementById('photo-grid');
   grid.innerHTML = photos
     .map((p) => {
       const url = trackURL(URL.createObjectURL(p.blob));
+      const sync = SYNC_ICONS[p.syncStatus];
       return `
         <button class="photo-tile" data-photo-id="${p.id}">
           <img src="${url}" alt="${escapeHTML(p.title || 'Foto')}" loading="lazy" draggable="false" />
           <span class="photo-check">✓</span>
+          ${sync ? `<span class="sync-badge" title="${sync.title}">${sync.icon}</span>` : ''}
         </button>
       `;
     })
@@ -338,15 +369,20 @@ function renderBreadcrumbs(path) {
     .join('');
 }
 
-function folderActionSheet(folderName) {
+function folderActionSheet(folder) {
+  const driveAction = folder.driveFolderId
+    ? `<button class="sheet-action" data-action="unlink-drive">☁️ Enlazada con "${escapeHTML(folder.driveFolderName || 'Drive')}" — Desenlazar</button>`
+    : `<button class="sheet-action" data-action="link-drive">☁️ Enlazar con Google Drive</button>`;
+
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
       <div class="modal action-sheet" role="dialog" aria-modal="true">
-        <h2>${escapeHTML(folderName)}</h2>
+        <h2>${escapeHTML(folder.name)}</h2>
         <button class="sheet-action" data-action="edit">✏️ Editar (nombre / descripción)</button>
         <button class="sheet-action" data-action="export">📄 Exportar PDF</button>
+        ${driveAction}
         <button class="sheet-action sheet-danger" data-action="delete">🗑️ Eliminar</button>
         <button class="sheet-action" data-action="cancel">Cancelar</button>
       </div>

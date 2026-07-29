@@ -116,7 +116,7 @@ export async function getFolderPath(id) {
 
 // ---------- Photos ----------
 
-export async function addPhoto({ folderId, blob, title = '', note = '' }) {
+export async function addPhoto({ folderId, blob, title = '', note = '', syncStatus = null }) {
   const store = await tx('photos', 'readwrite');
   const photo = {
     id: uuid(),
@@ -125,9 +125,16 @@ export async function addPhoto({ folderId, blob, title = '', note = '' }) {
     title,
     note,
     createdAt: Date.now(),
+    syncStatus,
   };
   await wrap(store.add(photo));
   return photo;
+}
+
+export async function getPendingUploads() {
+  const store = await tx('photos', 'readonly');
+  const all = await wrap(store.getAll());
+  return all.filter((p) => p.syncStatus === 'pending').sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function getPhoto(id) {

@@ -1,10 +1,13 @@
 import { registerRoute, registerNotFound, startRouter, navigate } from './router.js';
 import { ROOT_ID } from './db.js';
+import { initSync } from './sync.js';
 import { renderFoldersView } from './views/foldersView.js';
 import { renderCameraView } from './views/cameraView.js';
 import { renderPhotoView } from './views/photoView.js';
 
 const appEl = document.getElementById('app');
+
+initSync();
 
 registerRoute('/', () => renderFoldersView(appEl, ROOT_ID));
 registerRoute('/folder/:id', ({ id }) => renderFoldersView(appEl, id));

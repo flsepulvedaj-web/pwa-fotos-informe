@@ -17,6 +17,11 @@
   <div id="app"></div>
 
   <script src="vendor/jspdf.umd.min.js"></script>
+  <!-- Login y selector de Google Drive: requieren internet (se cargan desde
+       Google, no se pueden guardar localmente); el resto de la app funciona
+       sin ellos si no hay conexión. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js" async defer></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
-import { addPhoto, deletePhoto } from '../db.js';
+import { addPhoto, deletePhoto, getFolder } from '../db.js';
 import { navigate } from '../router.js';
 import { canvasToBlob, toast } from '../utils.js';
+import { trySync } from '../sync.js';
 
 let activeStream = null;
 let facingMode = 'environment';
@@ -14,6 +15,9 @@ function stopStream() {
 
 export async function renderCameraView(container, folderId) {
   stopStream();
+
+  const folder = await getFolder(folderId);
+  const linkedToDrive = !!folder?.driveFolderId;
 
   // Fotos tomadas en esta sesión de cámara: { id, url }, en orden de captura.
   const sessionPhotos = [];
@@ -105,9 +109,16 @@ export async function renderCameraView(container, folderId) {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const blob = await canvasToBlob(canvas, 'image/jpeg', 0.9);
-    const photo = await addPhoto({ folderId, blob, title: '', note: '' });
+    const photo = await addPhoto({
+      folderId,
+      blob,
+      title: '',
+      note: '',
+      syncStatus: linkedToDrive ? 'pending' : null,
+    });
     sessionPhotos.push({ id: photo.id, url: URL.createObjectURL(blob) });
     updateLastShotUI();
+    if (linkedToDrive) trySync();
   });
 
   lastShotBtn.addEventListener('click', () => {

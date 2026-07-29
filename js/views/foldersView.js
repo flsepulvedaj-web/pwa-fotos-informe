@@ -3,10 +3,13 @@ import {
   getChildFolders,
   getFolderPath,
   createFolder,
-  renameFolder,
+  updateFolder,
   deleteFolderRecursive,
   getPhotosByFolder,
   getPhotosByIds,
+  getAllFolders,
+  movePhotos,
+  deletePhoto,
 } from '../db.js';
 import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
@@ -33,7 +36,9 @@ export async function renderFoldersView(container, folderId) {
     getPhotosByFolder(folderId),
   ]);
 
-  const currentName = path.length ? path[path.length - 1].name : 'Inicio';
+  const currentFolder = path.length
+    ? path[path.length - 1]
+    : { id: ROOT_ID, name: 'Inicio', description: '' };
   const selection = new Set();
   let selectMode = false;
 
@@ -78,6 +83,8 @@ export async function renderFoldersView(container, folderId) {
     <div class="selection-bar" id="selection-bar" hidden>
       <span id="selection-count">0 seleccionadas</span>
       <div class="selection-actions">
+        <button class="icon-text-btn" id="btn-move" title="Mover a carpeta">📂<span>Mover</span></button>
+        <button class="icon-text-btn icon-text-danger" id="btn-delete-selection" title="Eliminar">🗑️<span>Eliminar</span></button>
         <button class="btn btn-secondary" id="btn-cancel-select">Cancelar</button>
         <button class="btn btn-primary" id="btn-export">Exportar PDF</button>
       </div>
@@ -108,11 +115,14 @@ export async function renderFoldersView(container, folderId) {
   container.querySelector('#btn-new-folder').addEventListener('click', async () => {
     const result = await promptDialog({
       title: 'Nueva carpeta',
-      fields: [{ name: 'name', label: 'Nombre', placeholder: 'Ej: Fachada norte' }],
+      fields: [
+        { name: 'name', label: 'Nombre', placeholder: 'Ej: Fachada norte' },
+        { name: 'description', label: 'Descripción (para el informe)', placeholder: 'Ej: Revisión estructural del sector norte', type: 'textarea' },
+      ],
       confirmLabel: 'Crear',
     });
     if (result && result.name) {
-      await createFolder(result.name, folderId);
+      await createFolder(result.name, folderId, result.description);
       renderFoldersView(container, folderId);
     }
   });
@@ -127,6 +137,8 @@ export async function renderFoldersView(container, folderId) {
   const btnSelect = container.querySelector('#btn-select');
   const btnCancelSelect = container.querySelector('#btn-cancel-select');
   const btnExport = container.querySelector('#btn-export');
+  const btnMove = container.querySelector('#btn-move');
+  const btnDeleteSelection = container.querySelector('#btn-delete-selection');
   const selectionCount = container.querySelector('#selection-count');
 
   function setSelectMode(on) {
@@ -143,6 +155,8 @@ export async function renderFoldersView(container, folderId) {
   function updateSelectionUI() {
     selectionCount.textContent = `${selection.size} seleccionada${selection.size === 1 ? '' : 's'}`;
     btnExport.textContent = selection.size ? 'Exportar seleccionadas' : 'Exportar todas';
+    btnMove.disabled = selection.size === 0;
+    btnDeleteSelection.disabled = selection.size === 0;
   }
 
   if (btnSelect) {
@@ -179,7 +193,7 @@ export async function renderFoldersView(container, folderId) {
     btnExport.disabled = true;
     btnExport.textContent = 'Generando PDF…';
     try {
-      await exportFolderReport({ folderName: currentName, photos: photosToExport });
+      await exportFolderReport({ folder: currentFolder, photos: photosToExport });
       toast('Informe PDF generado.');
     } catch (err) {
       console.error(err);
@@ -189,17 +203,54 @@ export async function renderFoldersView(container, folderId) {
     }
   });
 
+  btnDeleteSelection.addEventListener('click', async () => {
+    if (!selection.size) return;
+    const ok = await confirmDialog(`¿Eliminar ${selection.size} foto${selection.size === 1 ? '' : 's'}? Esta acción no se puede deshacer.`);
+    if (!ok) return;
+    for (const id of selection) {
+      await deletePhoto(id);
+    }
+    toast('Fotos eliminadas.');
+    renderFoldersView(container, folderId);
+  });
+
+  btnMove.addEventListener('click', async () => {
+    if (!selection.size) return;
+    const targetId = await folderPickerDialog(folderId);
+    if (targetId === null) return;
+    await movePhotos([...selection], targetId);
+    toast('Fotos movidas.');
+    renderFoldersView(container, folderId);
+  });
+
   async function openFolderMenu(folder) {
     const action = await folderActionSheet(folder.name);
-    if (action === 'rename') {
+    if (action === 'edit') {
       const result = await promptDialog({
-        title: 'Renombrar carpeta',
-        fields: [{ name: 'name', label: 'Nombre', value: folder.name }],
-        confirmLabel: 'Renombrar',
+        title: 'Editar carpeta',
+        fields: [
+          { name: 'name', label: 'Nombre', value: folder.name },
+          { name: 'description', label: 'Descripción (para el informe)', value: folder.description || '', type: 'textarea' },
+        ],
+        confirmLabel: 'Guardar',
       });
       if (result && result.name) {
-        await renameFolder(folder.id, result.name);
+        await updateFolder(folder.id, { name: result.name, description: result.description });
         renderFoldersView(container, folderId);
+      }
+    } else if (action === 'export') {
+      const folderPhotos = await getPhotosByFolder(folder.id);
+      if (!folderPhotos.length) {
+        toast('Esa carpeta no tiene fotos.');
+        return;
+      }
+      toast('Generando PDF…');
+      try {
+        await exportFolderReport({ folder, photos: folderPhotos });
+        toast('Informe PDF generado.');
+      } catch (err) {
+        console.error(err);
+        toast('Error al generar el PDF.');
       }
     } else if (action === 'delete') {
       const ok = await confirmDialog(
@@ -249,7 +300,8 @@ function folderActionSheet(folderName) {
     overlay.innerHTML = `
       <div class="modal action-sheet" role="dialog" aria-modal="true">
         <h2>${escapeHTML(folderName)}</h2>
-        <button class="sheet-action" data-action="rename">✏️ Renombrar</button>
+        <button class="sheet-action" data-action="edit">✏️ Editar (nombre / descripción)</button>
+        <button class="sheet-action" data-action="export">📄 Exportar PDF</button>
         <button class="sheet-action sheet-danger" data-action="delete">🗑️ Eliminar</button>
         <button class="sheet-action" data-action="cancel">Cancelar</button>
       </div>
@@ -264,6 +316,47 @@ function folderActionSheet(folderName) {
       if (e.target === overlay) cleanup(null);
       const btn = e.target.closest('[data-action]');
       if (btn) cleanup(btn.dataset.action === 'cancel' ? null : btn.dataset.action);
+    });
+  });
+}
+
+// Devuelve el id de carpeta elegido (ROOT_ID para Inicio), o null si se cancela.
+async function folderPickerDialog(excludeId) {
+  const allFolders = await getAllFolders();
+  const options = [{ id: ROOT_ID, name: 'Inicio', depth: 0 }, ...allFolders].filter(
+    (f) => f.id !== excludeId
+  );
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal folder-picker" role="dialog" aria-modal="true">
+        <h2>Mover a…</h2>
+        <div class="folder-picker-list">
+          ${options.map((f) => `
+            <button class="folder-picker-item" data-folder-id="${f.id}" style="padding-left:${16 + f.depth * 18}px">
+              📁 ${escapeHTML(f.name)}
+            </button>
+          `).join('')}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-action="cancel">Cancelar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    function cleanup(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(null);
+      const cancelBtn = e.target.closest('[data-action="cancel"]');
+      if (cancelBtn) cleanup(null);
+      const item = e.target.closest('.folder-picker-item');
+      if (item) cleanup(item.dataset.folderId);
     });
   });
 }

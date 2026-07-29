@@ -48,9 +48,9 @@ function wrap(request) {
 
 // ---------- Folders ----------
 
-export async function createFolder(name, parentId = ROOT_ID) {
+export async function createFolder(name, parentId = ROOT_ID, description = '') {
   const store = await tx('folders', 'readwrite');
-  const folder = { id: uuid(), name, parentId, createdAt: Date.now() };
+  const folder = { id: uuid(), name, parentId, description, createdAt: Date.now() };
   await wrap(store.add(folder));
   return folder;
 }
@@ -67,13 +67,26 @@ export async function getChildFolders(parentId = ROOT_ID) {
   return results.sort((a, b) => a.name.localeCompare(b.name, 'es'));
 }
 
-export async function renameFolder(id, name) {
+export async function updateFolder(id, changes) {
   const store = await tx('folders', 'readwrite');
   const folder = await wrap(store.get(id));
   if (!folder) return null;
-  folder.name = name;
+  Object.assign(folder, changes);
   await wrap(store.put(folder));
   return folder;
+}
+
+export async function getAllFolders() {
+  const result = [];
+  async function walk(parentId, depth) {
+    const children = await getChildFolders(parentId);
+    for (const child of children) {
+      result.push({ id: child.id, name: child.name, depth });
+      await walk(child.id, depth + 1);
+    }
+  }
+  await walk(ROOT_ID, 0);
+  return result;
 }
 
 export async function deleteFolderRecursive(id) {
@@ -146,4 +159,10 @@ export async function deletePhoto(id) {
 export async function getPhotosByIds(ids) {
   const photos = await Promise.all(ids.map((id) => getPhoto(id)));
   return photos.filter(Boolean).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function movePhotos(ids, targetFolderId) {
+  for (const id of ids) {
+    await updatePhoto(id, { folderId: targetFolderId });
+  }
 }

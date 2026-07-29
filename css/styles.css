@@ -215,6 +215,19 @@ button {
   height: 100%;
   object-fit: cover;
   display: block;
+  /* Deja que el <button> padre reciba todos los eventos de puntero: si el
+     navegador ve el gesto de mantener presionado sobre la propia <img>,
+     dispara su menú nativo (Compartir/Copiar/Ver imagen) por encima del
+     nuestro. */
+  pointer-events: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.photo-tile {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .photo-check {

@@ -165,7 +165,43 @@ export async function renderFoldersView(container, folderId) {
   btnCancelSelect.addEventListener('click', () => setSelectMode(false));
 
   container.querySelectorAll('.photo-tile').forEach((tile) => {
+    let longPressTimer = null;
+    let longPressFired = false;
+
+    const selectThisTile = () => {
+      const id = tile.dataset.photoId;
+      if (!selection.has(id)) {
+        selection.add(id);
+        tile.classList.add('selected');
+      }
+      updateSelectionUI();
+    };
+
+    tile.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      longPressFired = false;
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        if (navigator.vibrate) navigator.vibrate(15);
+        if (!selectMode) setSelectMode(true);
+        selectThisTile();
+      }, 450);
+    });
+    const cancelLongPress = () => clearTimeout(longPressTimer);
+    tile.addEventListener('pointerup', cancelLongPress);
+    tile.addEventListener('pointercancel', cancelLongPress);
+    tile.addEventListener('pointerleave', cancelLongPress);
+    tile.addEventListener('pointermove', cancelLongPress);
+    // El navegador muestra su propio menú (Compartir/Copiar/Ver imagen) al
+    // mantener presionado sobre una <img>; lo bloqueamos porque el gesto ya
+    // lo usamos nosotros para entrar en modo selección.
+    tile.addEventListener('contextmenu', (e) => e.preventDefault());
+
     tile.addEventListener('click', () => {
+      if (longPressFired) {
+        longPressFired = false;
+        return;
+      }
       if (!selectMode) {
         navigate(`/photo/${tile.dataset.photoId}`);
         return;
@@ -271,7 +307,7 @@ function renderPhotoGrid(photos) {
       const url = trackURL(URL.createObjectURL(p.blob));
       return `
         <button class="photo-tile" data-photo-id="${p.id}">
-          <img src="${url}" alt="${escapeHTML(p.title || 'Foto')}" loading="lazy" />
+          <img src="${url}" alt="${escapeHTML(p.title || 'Foto')}" loading="lazy" draggable="false" />
           <span class="photo-check">✓</span>
         </button>
       `;

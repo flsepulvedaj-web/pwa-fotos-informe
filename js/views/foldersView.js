@@ -40,6 +40,9 @@ export async function renderFoldersView(container, folderId) {
     getPinnedFolders(),
   ]);
   const shortcutFolders = pinnedFolders.filter((f) => f.id !== folderId);
+  // Las carpetas fijadas ya tienen su acceso directo permanente (el ícono de
+  // libro); se ocultan de la lista normal para no verlas duplicadas.
+  const visibleSubfolders = subfolders.filter((f) => !f.pinned);
 
   const currentFolder = path.length
     ? path[path.length - 1]
@@ -51,14 +54,15 @@ export async function renderFoldersView(container, folderId) {
     <header class="app-header">
       <nav class="breadcrumbs" id="breadcrumbs"></nav>
       <div class="header-actions">
+        ${folderId !== ROOT_ID ? '<button class="icon-btn" id="btn-folder-menu" title="Opciones de la carpeta">⋮</button>' : ''}
         <button class="icon-btn" id="btn-select" title="Seleccionar" ${photos.length ? '' : 'disabled'}>✓</button>
       </div>
     </header>
 
     <main class="view-content">
-      ${subfolders.length ? `
+      ${visibleSubfolders.length ? `
         <section class="folder-grid">
-          ${subfolders.map((f) => `
+          ${visibleSubfolders.map((f) => `
             <button class="folder-tile" data-folder-id="${f.id}">
               <span class="folder-icon">📁</span>
               ${f.driveFolderId ? '<span class="folder-drive-badge" title="Enlazada con Google Drive">☁️</span>' : ''}
@@ -72,7 +76,7 @@ export async function renderFoldersView(container, folderId) {
       ${photos.length ? `
         <section class="photo-grid" id="photo-grid"></section>
       ` : `
-        ${subfolders.length === 0 ? `
+        ${visibleSubfolders.length === 0 ? `
           <div class="empty-state">
             <p>Esta carpeta está vacía.</p>
             <p>Crea una subcarpeta o toma una foto para empezar.</p>
@@ -131,6 +135,13 @@ export async function renderFoldersView(container, folderId) {
   container.querySelectorAll('[data-shortcut-folder-id]').forEach((btn) => {
     btn.addEventListener('click', () => navigate(`/folder/${btn.dataset.shortcutFolderId}`));
   });
+
+  // Opciones de la carpeta actual (útil sobre todo para una fijada, que ya
+  // no aparece en ningún listado como para tocar su "⋮")
+  const btnFolderMenu = container.querySelector('#btn-folder-menu');
+  if (btnFolderMenu) {
+    btnFolderMenu.addEventListener('click', () => openFolderMenu(currentFolder));
+  }
 
   // Nueva carpeta
   container.querySelector('#btn-new-folder').addEventListener('click', async () => {

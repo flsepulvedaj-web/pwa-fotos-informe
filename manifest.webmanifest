@@ -1,13 +1,13 @@
 {
-  "name": "Fotos Informe",
-  "short_name": "Fotos Informe",
+  "name": "Len Reports",
+  "short_name": "Len Reports",
   "description": "Organiza fotos en carpetas y expórtalas como informe PDF, todo offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#f4f5f7",
-  "theme_color": "#2563eb",
+  "theme_color": "#1c2b4a",
   "lang": "es",
   "icons": [
     {

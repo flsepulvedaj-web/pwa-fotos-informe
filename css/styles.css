@@ -1,8 +1,9 @@
 :root {
   --color-bg: #f4f5f7;
   --color-surface: #ffffff;
-  --color-primary: #2563eb;
-  --color-primary-dark: #1d4ed8;
+  --color-primary: #1c2b4a;
+  --color-primary-dark: #101a30;
+  --color-accent: #f2a93b;
   --color-text: #1a1d23;
   --color-text-muted: #6b7280;
   --color-border: #e2e4e9;
@@ -15,8 +16,9 @@
   :root {
     --color-bg: #14161a;
     --color-surface: #1e2128;
-    --color-primary: #3b82f6;
-    --color-primary-dark: #2563eb;
+    --color-primary: #4c6fa5;
+    --color-primary-dark: #2f4670;
+    --color-accent: #f2a93b;
     --color-text: #f0f1f3;
     --color-text-muted: #9aa0ab;
     --color-border: #2c3038;
@@ -25,6 +27,14 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* Algunos elementos fijan `display` explícitamente (flex, etc.) en su propia
+   clase; sin esta regla, ese `display` gana por orden de cascada sobre el
+   `[hidden] { display:none }` del user-agent y el elemento queda visible
+   aunque tenga el atributo `hidden`. */
+[hidden] {
+  display: none !important;
 }
 
 html, body {
@@ -265,8 +275,8 @@ button {
   width: 60px;
   height: 60px;
   font-size: 26px;
-  background: var(--color-primary);
-  color: #fff;
+  background: var(--color-accent);
+  color: #1c2b4a;
 }
 
 .fab-secondary {

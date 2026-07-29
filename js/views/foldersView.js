@@ -8,6 +8,7 @@ import {
   getPhotosByFolder,
   getPhotosByIds,
   getAllFolders,
+  getPinnedFolders,
   movePhotos,
   deletePhoto,
 } from '../db.js';
@@ -32,11 +33,13 @@ function revokeAllURLs() {
 export async function renderFoldersView(container, folderId) {
   revokeAllURLs();
 
-  const [path, subfolders, photos] = await Promise.all([
+  const [path, subfolders, photos, pinnedFolders] = await Promise.all([
     getFolderPath(folderId),
     getChildFolders(folderId),
     getPhotosByFolder(folderId),
+    getPinnedFolders(),
   ]);
+  const shortcutFolders = pinnedFolders.filter((f) => f.id !== folderId);
 
   const currentFolder = path.length
     ? path[path.length - 1]
@@ -79,6 +82,9 @@ export async function renderFoldersView(container, folderId) {
     </main>
 
     <div class="fab-row">
+      ${shortcutFolders.map((f) => `
+        <button class="fab fab-secondary" data-shortcut-folder-id="${f.id}" title="${escapeHTML(f.name)}">📖</button>
+      `).join('')}
       <button class="fab fab-secondary" id="btn-new-folder" title="Nueva carpeta">📁➕</button>
       <button class="fab fab-primary" id="btn-camera" title="Tomar foto">📷</button>
     </div>
@@ -98,17 +104,9 @@ export async function renderFoldersView(container, folderId) {
   if (photos.length) renderPhotoGrid(photos);
   trySync();
   if (currentFolder.driveFolderId) {
-    syncFoldersFromDrive(currentFolder).then(({ foundNew, error, driveChildrenCount }) => {
-      if (foundNew) {
-        renderFoldersView(container, folderId);
-      } else if (error) {
-        toast(`Drive: ${error}`);
-      } else {
-        // TODO(temporal, quitar cuando quede confirmado): para diagnosticar
-        // por qué "Santa Elena" no aparecía, mostramos cuántas subcarpetas
-        // detectó Drive en esta pasada aunque no haya ninguna nueva.
-        toast(`Drive: ${driveChildrenCount ?? 0} carpeta(s) vistas en Drive, nada nuevo.`);
-      }
+    syncFoldersFromDrive(currentFolder).then(({ foundNew, error }) => {
+      if (foundNew) renderFoldersView(container, folderId);
+      else if (error) toast(`Drive: ${error}`);
     });
   }
 
@@ -127,6 +125,11 @@ export async function renderFoldersView(container, folderId) {
       const folder = subfolders.find((f) => f.id === id);
       await openFolderMenu(folder);
     });
+  });
+
+  // Accesos directos (carpetas fijadas)
+  container.querySelectorAll('[data-shortcut-folder-id]').forEach((btn) => {
+    btn.addEventListener('click', () => navigate(`/folder/${btn.dataset.shortcutFolderId}`));
   });
 
   // Nueva carpeta
@@ -291,7 +294,15 @@ export async function renderFoldersView(container, folderId) {
 
   async function openFolderMenu(folder) {
     const action = await folderActionSheet(folder);
-    if (action === 'link-drive') {
+    if (action === 'pin') {
+      await updateFolder(folder.id, { pinned: true });
+      toast(`"${folder.name}" fijada como acceso directo.`);
+      renderFoldersView(container, folderId);
+    } else if (action === 'unpin') {
+      await updateFolder(folder.id, { pinned: false });
+      toast('Acceso directo quitado.');
+      renderFoldersView(container, folderId);
+    } else if (action === 'link-drive') {
       try {
         const picked = await openFolderPicker();
         if (picked) {
@@ -390,6 +401,9 @@ function folderActionSheet(folder) {
   const driveAction = folder.driveFolderId
     ? `<button class="sheet-action" data-action="unlink-drive">☁️ Enlazada con "${escapeHTML(folder.driveFolderName || 'Drive')}" — Desenlazar</button>`
     : `<button class="sheet-action" data-action="link-drive">☁️ Enlazar con Google Drive</button>`;
+  const pinAction = folder.pinned
+    ? `<button class="sheet-action" data-action="unpin">📖 Quitar acceso directo</button>`
+    : `<button class="sheet-action" data-action="pin">📖 Fijar como acceso directo</button>`;
 
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
@@ -399,6 +413,7 @@ function folderActionSheet(folder) {
         <h2>${escapeHTML(folder.name)}</h2>
         <button class="sheet-action" data-action="edit">✏️ Editar (nombre / descripción)</button>
         <button class="sheet-action" data-action="export">📄 Exportar PDF</button>
+        ${pinAction}
         ${driveAction}
         <button class="sheet-action sheet-danger" data-action="delete">🗑️ Eliminar</button>
         <button class="sheet-action" data-action="cancel">Cancelar</button>

@@ -89,6 +89,12 @@ export async function getAllFolders() {
   return result;
 }
 
+export async function getPinnedFolders() {
+  const store = await tx('folders', 'readonly');
+  const all = await wrap(store.getAll());
+  return all.filter((f) => f.pinned).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+}
+
 export async function deleteFolderRecursive(id) {
   const children = await getChildFolders(id);
   for (const child of children) {

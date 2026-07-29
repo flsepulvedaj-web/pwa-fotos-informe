@@ -1,13 +1,12 @@
 // Integración con Google Drive: login (Google Identity Services), selector
 // de carpeta (Picker API) y subida de archivos (Drive API v3).
-// Scope drive.file: la app solo puede tocar archivos/carpetas que el propio
-// usuario le autorice explícitamente a través del selector oficial de
-// Google — nunca el resto de su Drive.
-
+// Scope drive (completo, no drive.file): se necesita para que la app pueda
+// listar carpetas creadas directo en Drive por el usuario (fuera de la
+// app) y así sincronizar en las dos direcciones, no solo app -> Drive.
 const CLIENT_ID = '1005265173127-i5lhpkpnmi8mlraev3hvla9p2qrf2v11.apps.googleusercontent.com';
 const API_KEY = 'AIzaSyBPOsLlvyl1bPtQxURmf4V-C7pUvLxZl04';
-const SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const TOKEN_STORAGE_KEY = 'gdrive-token';
+const SCOPE = 'https://www.googleapis.com/auth/drive';
+const TOKEN_STORAGE_KEY = 'gdrive-token-v2';
 
 let tokenClient = null;
 let accessToken = null;

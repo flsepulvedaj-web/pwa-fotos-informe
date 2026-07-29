@@ -15,7 +15,7 @@ import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
 import { exportFolderReport } from './exportView.js';
 import { openFolderPicker } from '../googleDrive.js';
-import { trySync } from '../sync.js';
+import { trySync, syncFoldersFromDrive, createMatchingDriveFolder } from '../sync.js';
 
 let objectURLs = [];
 
@@ -97,6 +97,11 @@ export async function renderFoldersView(container, folderId) {
   renderBreadcrumbs(path);
   if (photos.length) renderPhotoGrid(photos);
   trySync();
+  if (currentFolder.driveFolderId) {
+    syncFoldersFromDrive(currentFolder).then((foundNew) => {
+      if (foundNew) renderFoldersView(container, folderId);
+    });
+  }
 
   // Navegación de subcarpetas
   container.querySelectorAll('.folder-tile').forEach((tile) => {
@@ -126,7 +131,10 @@ export async function renderFoldersView(container, folderId) {
       confirmLabel: 'Crear',
     });
     if (result && result.name) {
-      await createFolder(result.name, folderId, result.description);
+      const newFolder = await createFolder(result.name, folderId, result.description);
+      if (currentFolder.driveFolderId) {
+        await createMatchingDriveFolder(newFolder, currentFolder);
+      }
       renderFoldersView(container, folderId);
     }
   });

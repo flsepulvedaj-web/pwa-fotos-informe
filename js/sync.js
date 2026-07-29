@@ -1,5 +1,5 @@
-import { getPendingUploads, getFolder, updatePhoto } from './db.js';
-import { uploadFile } from './googleDrive.js';
+import { getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto } from './db.js';
+import { uploadFile, listDriveFolders, createDriveFolder } from './googleDrive.js';
 
 let syncing = false;
 const listeners = new Set();
@@ -50,6 +50,47 @@ export async function trySync() {
     }
   } finally {
     syncing = false;
+  }
+}
+
+/**
+ * Revisa en Drive si dentro de la carpeta enlazada hay subcarpetas que
+ * todavía no existen en la app (creadas directo en Drive por Pancho u otra
+ * persona) y las crea localmente. Devuelve true si encontró alguna nueva.
+ */
+export async function syncFoldersFromDrive(folder) {
+  if (!folder?.driveFolderId || !navigator.onLine) return false;
+  try {
+    const [driveChildren, localChildren] = await Promise.all([
+      listDriveFolders(folder.driveFolderId),
+      getChildFolders(folder.id),
+    ]);
+    const knownDriveIds = new Set(localChildren.map((f) => f.driveFolderId).filter(Boolean));
+    let foundNew = false;
+    for (const dc of driveChildren) {
+      if (knownDriveIds.has(dc.id)) continue;
+      const created = await createFolder(dc.name, folder.id, '');
+      await updateFolder(created.id, { driveFolderId: dc.id, driveFolderName: dc.name });
+      foundNew = true;
+    }
+    return foundNew;
+  } catch (err) {
+    console.error('Error sincronizando carpetas desde Drive:', err);
+    return false;
+  }
+}
+
+/**
+ * Si la carpeta enlazada lo permite, crea también en Drive una carpeta
+ * recién creada en la app (para que la sincronización sea de ida y vuelta).
+ */
+export async function createMatchingDriveFolder(localFolder, parentFolder) {
+  if (!parentFolder?.driveFolderId) return;
+  try {
+    const created = await createDriveFolder(parentFolder.driveFolderId, localFolder.name);
+    await updateFolder(localFolder.id, { driveFolderId: created.id, driveFolderName: created.name });
+  } catch (err) {
+    console.error('Error creando la carpeta en Drive:', err);
   }
 }
 

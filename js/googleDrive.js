@@ -141,6 +141,50 @@ export async function openFolderPicker() {
 }
 
 /**
+ * Lista las subcarpetas (no archivos) que ya existen dentro de una carpeta
+ * de Drive. Se usa para reflejar en la app carpetas creadas directamente
+ * en Drive (por Pancho u otra persona del proyecto).
+ */
+export async function listDriveFolders(parentId) {
+  const token = await signIn();
+  const q = encodeURIComponent(
+    `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  );
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=200&spaces=drive`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error listando carpetas de Drive (${res.status}): ${text}`);
+  }
+  const data = await res.json();
+  return data.files || [];
+}
+
+/**
+ * Crea una subcarpeta nueva dentro de una carpeta de Drive. Se usa cuando
+ * Pancho crea una carpeta en la app dentro de una carpeta ya enlazada, para
+ * que también quede creada del lado de Drive.
+ */
+export async function createDriveFolder(parentId, name) {
+  const token = await signIn();
+  const res = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error creando carpeta en Drive (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
+/**
  * Sube un archivo a una carpeta de Drive. Lanza un error si falla (el
  * llamador decide qué hacer: reintentar más tarde, marcar como error, etc).
  */

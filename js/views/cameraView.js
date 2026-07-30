@@ -161,10 +161,28 @@ export async function renderCameraView(container, folderId) {
 
   async function startCamera() {
     try {
-      activeStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facingMode } },
-        audio: false,
-      });
+      // Pedir el zoom 0.6 (angular) desde el inicio, no después: en varios
+      // teléfonos (Samsung incluido) el lente principal ya abierto solo
+      // acepta zoom desde 1x en adelante, pero si se pide como parte de la
+      // constraint inicial el navegador puede elegir directamente el lente
+      // ultra angular para satisfacerla.
+      const videoConstraints = { facingMode: { ideal: facingMode } };
+      if (facingMode === 'environment') videoConstraints.zoom = { ideal: 0.6 };
+
+      try {
+        activeStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+      } catch (err) {
+        // Si el navegador rechaza la constraint de zoom (OverconstrainedError
+        // en dispositivos que no la soportan en absoluto), reintentar sin ella.
+        if (videoConstraints.zoom) {
+          activeStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: facingMode } },
+            audio: false,
+          });
+        } else {
+          throw err;
+        }
+      }
       video.srcObject = activeStream;
       errorEl.hidden = true;
       await initZoom();

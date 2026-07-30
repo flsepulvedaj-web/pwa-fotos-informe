@@ -13,6 +13,31 @@ function stopStream() {
   }
 }
 
+// Por defecto la app queda fija en vertical (ver manifest.webmanifest), pero
+// en la cámara hay que poder tomar fotos horizontales (0.6x), así que se
+// libera la orientación al entrar y se vuelve a fijar en vertical al salir.
+// screen.orientation.lock()/unlock() solo funciona con la app instalada
+// (display standalone); en un navegador de escritorio simplemente no hace nada.
+function unlockOrientation() {
+  try {
+    screen.orientation?.unlock?.();
+  } catch {
+    // no soportado, no pasa nada
+  }
+}
+
+async function relockPortrait() {
+  try {
+    await screen.orientation?.lock?.('portrait-primary');
+  } catch {
+    // no soportado, no pasa nada
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
 export async function renderCameraView(container, folderId) {
   stopStream();
 
@@ -21,6 +46,9 @@ export async function renderCameraView(container, folderId) {
 
   // Fotos tomadas en esta sesión de cámara: { id, url }, en orden de captura.
   const sessionPhotos = [];
+  let currentZoom = null;
+
+  unlockOrientation();
 
   container.innerHTML = `
     <div class="camera-view">
@@ -34,6 +62,8 @@ export async function renderCameraView(container, folderId) {
         <button class="icon-btn camera-close" id="btn-close">✕</button>
         <button class="btn btn-primary camera-done" id="btn-done">Listo</button>
       </div>
+
+      <div class="camera-zoom" id="camera-zoom" hidden></div>
 
       <button class="camera-last-shot" id="last-shot" hidden>
         <img id="last-shot-img" alt="Última foto" />
@@ -51,6 +81,7 @@ export async function renderCameraView(container, folderId) {
   const onHashChange = () => {
     sessionPhotos.forEach((p) => URL.revokeObjectURL(p.url));
     stopStream();
+    relockPortrait();
     window.removeEventListener('hashchange', onHashChange);
   };
   window.addEventListener('hashchange', onHashChange);
@@ -61,15 +92,72 @@ export async function renderCameraView(container, folderId) {
   const lastShotBtn = container.querySelector('#last-shot');
   const lastShotImg = container.querySelector('#last-shot-img');
   const shotCount = container.querySelector('#shot-count');
+  const zoomEl = container.querySelector('#camera-zoom');
 
   function goBack() {
     sessionPhotos.forEach((p) => URL.revokeObjectURL(p.url));
     stopStream();
+    relockPortrait();
     navigate(folderId ? `/folder/${folderId}` : '/');
   }
 
   container.querySelector('#btn-close').addEventListener('click', goBack);
   container.querySelector('#btn-done').addEventListener('click', goBack);
+
+  function formatZoom(z) {
+    return (Number.isInteger(z) ? z : z.toFixed(1)) + 'x';
+  }
+
+  function updateZoomUI() {
+    zoomEl.querySelectorAll('.camera-zoom-btn').forEach((btn) => {
+      btn.classList.toggle('active', Number(btn.dataset.zoom) === currentZoom);
+    });
+  }
+
+  async function applyZoom(value) {
+    const track = activeStream?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: value }] });
+      currentZoom = value;
+      updateZoomUI();
+    } catch (err) {
+      console.warn('No se pudo aplicar el zoom', value, err);
+    }
+  }
+
+  // Además del zoom digital normal (1x en adelante), muchos teléfonos exponen
+  // el lente ultra gran angular como un valor de "zoom" bajo 1 (ej. 0.6x).
+  // Si el navegador informa ese rango se arma la fila de botones y se parte
+  // en 0.6x por defecto, que es lo que exige el formato del informe.
+  async function initZoom() {
+    zoomEl.innerHTML = '';
+    zoomEl.hidden = true;
+    currentZoom = null;
+
+    const track = activeStream?.getVideoTracks()[0];
+    const caps = track?.getCapabilities ? track.getCapabilities() : null;
+    if (!caps?.zoom) return;
+
+    const { min, max } = caps.zoom;
+    const defaultZoom = clamp(0.6, min, max);
+    const presets = [min, defaultZoom, 1, 2, 3].filter((v) => v >= min && v <= max);
+    const uniquePresets = [...new Set(presets)].sort((a, b) => a - b);
+    if (!uniquePresets.length) return;
+
+    zoomEl.innerHTML = uniquePresets
+      .map((z) => `<button type="button" class="camera-zoom-btn" data-zoom="${z}">${formatZoom(z)}</button>`)
+      .join('');
+    zoomEl.hidden = false;
+
+    await applyZoom(defaultZoom);
+  }
+
+  zoomEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.camera-zoom-btn');
+    if (!btn) return;
+    applyZoom(Number(btn.dataset.zoom));
+  });
 
   async function startCamera() {
     try {
@@ -79,6 +167,7 @@ export async function renderCameraView(container, folderId) {
       });
       video.srcObject = activeStream;
       errorEl.hidden = true;
+      await initZoom();
     } catch (err) {
       console.error('Error accediendo a la cámara:', err);
       errorEl.hidden = false;

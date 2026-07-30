@@ -705,6 +705,37 @@ button {
   background: #ccc;
 }
 
+.camera-zoom {
+  position: absolute;
+  left: 50%;
+  bottom: calc(112px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.camera-zoom-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.camera-zoom-btn.active {
+  background: var(--color-accent);
+  color: #1c2b4a;
+}
+
 .camera-last-shot {
   position: absolute;
   right: 16px;

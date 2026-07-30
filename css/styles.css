@@ -47,6 +47,23 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   overscroll-behavior-y: contain;
+  position: relative;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: url("../icons/watermark-logo.png") center center / min(70vw, 320px) no-repeat;
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@media (prefers-color-scheme: dark) {
+  body::before {
+    opacity: 0.1;
+  }
 }
 
 button {

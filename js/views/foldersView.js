@@ -14,7 +14,7 @@ import {
 } from '../db.js';
 import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
-import { exportFolderReport } from './exportView.js';
+import { openExportReviewScreen } from './exportView.js';
 import {
   openFolderPicker,
   getDriveRootFolder,
@@ -305,17 +305,9 @@ export async function renderFoldersView(container, folderId) {
       toast('No hay fotos para exportar.');
       return;
     }
-    btnExport.disabled = true;
-    btnExport.textContent = 'Generando PDF…';
-    try {
-      await exportFolderReport({ folder: currentFolder, photos: photosToExport });
-      toast('Informe PDF generado.');
-    } catch (err) {
-      console.error(err);
-      toast('Error al generar el PDF.');
-    } finally {
-      setSelectMode(false);
-    }
+    setSelectMode(false);
+    const exported = await openExportReviewScreen(photosToExport, currentFolder);
+    if (exported) renderFoldersView(container, folderId);
   });
 
   btnDeleteSelection.addEventListener('click', async () => {
@@ -392,14 +384,8 @@ export async function renderFoldersView(container, folderId) {
         toast('Esa carpeta no tiene fotos.');
         return;
       }
-      toast('Generando PDF…');
-      try {
-        await exportFolderReport({ folder, photos: folderPhotos });
-        toast('Informe PDF generado.');
-      } catch (err) {
-        console.error(err);
-        toast('Error al generar el PDF.');
-      }
+      const exported = await openExportReviewScreen(folderPhotos, folder);
+      if (exported) renderFoldersView(container, folderId);
     } else if (action === 'delete') {
       const ok = await confirmDialog(
         `¿Eliminar la carpeta "${folder.name}" y todo su contenido (subcarpetas y fotos)? Esta acción no se puede deshacer.`

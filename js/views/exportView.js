@@ -97,7 +97,9 @@ export function openExportReviewScreen(photos, folder) {
           await updatePhoto(photoId, { title: value });
         }
       }
-      await updateFolder(folder.id, { reportNumber, reportPeriod: period });
+      if (folder.id) {
+        await updateFolder(folder.id, { reportNumber, reportPeriod: period });
+      }
 
       try {
         const blob = await buildObraReportPDF(

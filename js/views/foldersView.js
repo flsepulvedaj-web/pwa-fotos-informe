@@ -1,5 +1,6 @@
 import {
   ROOT_ID,
+  getFolder,
   getChildFolders,
   getFolderPath,
   createFolder,
@@ -59,6 +60,8 @@ export async function renderFoldersView(container, folderId) {
     : { id: ROOT_ID, name: 'Inicio', description: '' };
   const selection = new Set();
   let selectMode = false;
+  const folderSelection = new Set();
+  let folderSelectMode = false;
   const isAdmin = folderId === ROOT_ID && (await getSignedInEmail()) === ADMIN_EMAIL;
 
   container.innerHTML = `
@@ -80,6 +83,7 @@ export async function renderFoldersView(container, folderId) {
               ${f.driveFolderId ? '<span class="folder-drive-badge" title="Enlazada con Google Drive">☁️</span>' : ''}
               <span class="folder-name">${escapeHTML(f.name)}</span>
               <span class="folder-menu" data-menu-folder-id="${f.id}">⋮</span>
+              <span class="folder-check">✓</span>
             </button>
           `).join('')}
         </section>
@@ -114,6 +118,14 @@ export async function renderFoldersView(container, folderId) {
         <button class="btn btn-primary" id="btn-export">Exportar PDF</button>
       </div>
     </div>
+
+    <div class="selection-bar" id="folder-selection-bar" hidden>
+      <span id="folder-selection-count">0 seleccionadas</span>
+      <div class="selection-actions">
+        <button class="btn btn-secondary" id="btn-cancel-folder-select">Cancelar</button>
+        <button class="btn btn-primary" id="btn-export-folders">Exportar combinado</button>
+      </div>
+    </div>
   `;
 
   renderBreadcrumbs(path);
@@ -126,10 +138,64 @@ export async function renderFoldersView(container, folderId) {
     });
   }
 
-  // Navegación de subcarpetas
+  // Navegación de subcarpetas + selección múltiple (mantener presionada,
+  // igual que con las fotos) para exportar varias carpetas combinadas.
   container.querySelectorAll('.folder-tile').forEach((tile) => {
+    let longPressTimer = null;
+    let longPressFired = false;
+    let startX = 0;
+    let startY = 0;
+    const MOVE_TOLERANCE = 12;
+
+    const selectThisFolder = () => {
+      const id = tile.dataset.folderId;
+      if (!folderSelection.has(id)) {
+        folderSelection.add(id);
+        tile.classList.add('selected');
+      }
+      updateFolderSelectionUI();
+    };
+
+    tile.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      startX = e.clientX;
+      startY = e.clientY;
+      longPressFired = false;
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        if (navigator.vibrate) navigator.vibrate(15);
+        if (!folderSelectMode) setFolderSelectMode(true);
+        selectThisFolder();
+      }, 450);
+    });
+    const cancelLongPress = () => clearTimeout(longPressTimer);
+    tile.addEventListener('pointerup', cancelLongPress);
+    tile.addEventListener('pointercancel', cancelLongPress);
+    tile.addEventListener('pointerleave', cancelLongPress);
+    tile.addEventListener('pointermove', (e) => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.hypot(dx, dy) > MOVE_TOLERANCE) cancelLongPress();
+    });
+
     tile.addEventListener('click', (e) => {
       if (e.target.classList.contains('folder-menu')) return;
+      if (longPressFired) {
+        longPressFired = false;
+        return;
+      }
+      if (folderSelectMode) {
+        const id = tile.dataset.folderId;
+        if (folderSelection.has(id)) {
+          folderSelection.delete(id);
+          tile.classList.remove('selected');
+        } else {
+          folderSelection.add(id);
+          tile.classList.add('selected');
+        }
+        updateFolderSelectionUI();
+        return;
+      }
       navigate(`/folder/${tile.dataset.folderId}`);
     });
   });
@@ -137,10 +203,49 @@ export async function renderFoldersView(container, folderId) {
   container.querySelectorAll('.folder-menu').forEach((menu) => {
     menu.addEventListener('click', async (e) => {
       e.stopPropagation();
+      if (folderSelectMode) return;
       const id = menu.dataset.menuFolderId;
       const folder = subfolders.find((f) => f.id === id);
       await openFolderMenu(folder);
     });
+  });
+
+  const folderSelectionBar = container.querySelector('#folder-selection-bar');
+  const folderSelectionCount = container.querySelector('#folder-selection-count');
+  const btnCancelFolderSelect = container.querySelector('#btn-cancel-folder-select');
+  const btnExportFolders = container.querySelector('#btn-export-folders');
+
+  function setFolderSelectMode(on) {
+    folderSelectMode = on;
+    if (on) setSelectMode(false);
+    container.querySelectorAll('.folder-tile').forEach((tile) => {
+      tile.classList.toggle('selectable', on);
+      tile.classList.remove('selected');
+    });
+    folderSelection.clear();
+    updateFolderSelectionUI();
+    folderSelectionBar.hidden = !on;
+  }
+
+  function updateFolderSelectionUI() {
+    folderSelectionCount.textContent = `${folderSelection.size} seleccionada${folderSelection.size === 1 ? '' : 's'}`;
+    btnExportFolders.disabled = folderSelection.size === 0;
+  }
+
+  btnCancelFolderSelect.addEventListener('click', () => setFolderSelectMode(false));
+
+  btnExportFolders.addEventListener('click', async () => {
+    if (!folderSelection.size) return;
+    const selectedFolders = (await Promise.all([...folderSelection].map((id) => getFolder(id)))).filter(Boolean);
+    const photoArrays = await Promise.all(selectedFolders.map((f) => getPhotosByFolder(f.id)));
+    const combinedPhotos = photoArrays.flat();
+    if (!combinedPhotos.length) {
+      toast('Esas carpetas no tienen fotos.');
+      return;
+    }
+    setFolderSelectMode(false);
+    const exported = await openExportReviewScreen(combinedPhotos, { name: '', reportNumber: '', reportPeriod: '' });
+    if (exported) renderFoldersView(container, folderId);
   });
 
   // Accesos directos (carpetas fijadas)
@@ -213,6 +318,7 @@ export async function renderFoldersView(container, folderId) {
 
   function setSelectMode(on) {
     selectMode = on;
+    if (on) setFolderSelectMode(false);
     container.querySelectorAll('.photo-tile').forEach((tile) => {
       tile.classList.toggle('selectable', on);
       tile.classList.remove('selected');

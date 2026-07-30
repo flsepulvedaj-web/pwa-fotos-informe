@@ -5,22 +5,32 @@
 // app) y así sincronizar en las dos direcciones, no solo app -> Drive.
 const CLIENT_ID = '1005265173127-i5lhpkpnmi8mlraev3hvla9p2qrf2v11.apps.googleusercontent.com';
 const API_KEY = 'AIzaSyBPOsLlvyl1bPtQxURmf4V-C7pUvLxZl04';
-const SCOPE = 'https://www.googleapis.com/auth/drive';
-const TOKEN_STORAGE_KEY = 'gdrive-token-v2';
+// 'email' además de 'drive': permite saber qué cuenta inició sesión, para
+// que solo el correo admin (ver ADMIN_EMAIL en foldersView.js) pueda ver
+// la opción de cambiar la carpeta raíz — el resto del equipo la usa fija.
+const SCOPE = 'https://www.googleapis.com/auth/drive email';
+const TOKEN_STORAGE_KEY = 'gdrive-token-v3';
 const ROOT_FOLDER_KEY = 'gdrive-root-folder';
 
+// Carpeta raíz por defecto ("Fotos Proyectos" de Pancho): así cualquier
+// compañero que abra la app en su propio teléfono queda restringido a esta
+// carpeta desde el primer uso, sin tener que configurar nada — nadie más
+// que el admin puede cambiarla (ver getDriveRootFolder).
+const DEFAULT_ROOT_FOLDER = { id: '1L0EDZ6eHzqOSxLnOqV2Wd5p8rp6hGsjf', name: 'Fotos Proyectos' };
+
 /**
- * Carpeta raíz de Drive a la que queda restringido el selector una vez
- * configurada (para no exponer el resto del Drive personal del usuario,
- * por ejemplo al compartir la app con compañeros de trabajo).
+ * Carpeta raíz de Drive a la que queda restringido el selector (para no
+ * exponer el resto del Drive personal de quien use la app). Si no hay una
+ * guardada localmente, usa la carpeta fija del equipo.
  */
 export function getDriveRootFolder() {
   try {
     const raw = localStorage.getItem(ROOT_FOLDER_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (raw) return JSON.parse(raw);
   } catch {
-    return null;
+    // ignorar datos corruptos
   }
+  return DEFAULT_ROOT_FOLDER.id === 'PENDIENTE' ? null : DEFAULT_ROOT_FOLDER;
 }
 
 export function setDriveRootFolder(folder) {
@@ -35,6 +45,7 @@ let tokenClient = null;
 let accessToken = null;
 let tokenExpiresAt = 0;
 let pickerLoaded = false;
+let cachedEmail = null;
 
 function waitFor(check, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
@@ -118,7 +129,30 @@ export function signOut() {
   }
   accessToken = null;
   tokenExpiresAt = 0;
+  cachedEmail = null;
   localStorage.removeItem(TOKEN_STORAGE_KEY);
+}
+
+/**
+ * Correo de la cuenta de Google con la que se inició sesión, o null si no
+ * hay sesión activa. Se usa para saber si quien está usando la app es el
+ * admin (Pancho) y por lo tanto puede ver la opción de cambiar la carpeta
+ * raíz — cualquier otra persona la ve fija.
+ */
+export async function getSignedInEmail() {
+  if (!isSignedIn()) return null;
+  if (cachedEmail) return cachedEmail;
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    cachedEmail = data.email || null;
+    return cachedEmail;
+  } catch {
+    return null;
+  }
 }
 
 async function ensurePickerLoaded() {

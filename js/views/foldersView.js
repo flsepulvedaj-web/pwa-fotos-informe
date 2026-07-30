@@ -15,8 +15,18 @@ import {
 import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
 import { exportFolderReport } from './exportView.js';
-import { openFolderPicker, getDriveRootFolder, setDriveRootFolder, clearDriveRootFolder } from '../googleDrive.js';
+import {
+  openFolderPicker,
+  getDriveRootFolder,
+  setDriveRootFolder,
+  clearDriveRootFolder,
+  getSignedInEmail,
+} from '../googleDrive.js';
 import { trySync, syncFoldersFromDrive, createMatchingDriveFolder } from '../sync.js';
+
+// Único correo que puede cambiar la carpeta raíz de Drive del equipo; para
+// cualquier otra cuenta queda fija (ver ⚙️ en el header de Inicio).
+const ADMIN_EMAIL = 'flsepulvedaj@gmail.com';
 
 let objectURLs = [];
 
@@ -49,13 +59,14 @@ export async function renderFoldersView(container, folderId) {
     : { id: ROOT_ID, name: 'Inicio', description: '' };
   const selection = new Set();
   let selectMode = false;
+  const isAdmin = folderId === ROOT_ID && (await getSignedInEmail()) === ADMIN_EMAIL;
 
   container.innerHTML = `
     <header class="app-header">
       <nav class="breadcrumbs" id="breadcrumbs"></nav>
       <div class="header-actions">
         ${folderId !== ROOT_ID ? '<button class="icon-btn" id="btn-folder-menu" title="Opciones de la carpeta">⋮</button>' : ''}
-        ${folderId === ROOT_ID ? '<button class="icon-btn" id="btn-drive-settings" title="Configurar Google Drive">⚙️</button>' : ''}
+        ${isAdmin ? '<button class="icon-btn" id="btn-drive-settings" title="Configurar Google Drive">⚙️</button>' : ''}
         <button class="icon-btn" id="btn-select" title="Seleccionar" ${photos.length ? '' : 'disabled'}>✓</button>
       </div>
     </header>

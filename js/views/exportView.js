@@ -1,6 +1,9 @@
 import { buildObraReportPDF, downloadBlob, sanitizeFilename } from '../pdfExport.js';
 import { updatePhoto, updateFolder } from '../db.js';
 import { escapeHTML, toast } from '../utils.js';
+import { REPORT_FORMATS, getFormatById, fixedLabelFor } from '../reportFormats.js';
+
+const LAST_FORMAT_KEY = 'export-last-format';
 
 function defaultPeriod() {
   try {
@@ -13,15 +16,23 @@ function defaultPeriod() {
 
 /**
  * Pantalla completa previa a exportar: encabezado del informe (obra, N°,
- * período) + lista de fotos con su descripción ("Imagen N:"), pensada para
- * recorrerse rápido aunque haya cientos de fotos. Al confirmar, guarda las
- * descripciones en cada foto y el N°/período en la carpeta (para precargarlos
- * la próxima vez), arma el PDF con el formato oficial y lo descarga.
- * Devuelve true si se exportó, false si se canceló.
+ * período, formato) + lista reordenable de fotos, cada una con su
+ * descripción ("Imagen N:") — libre para escribir, o de solo lectura si el
+ * formato elegido trae un texto fijo para esa posición. Al confirmar,
+ * guarda las descripciones libres en cada foto y el N°/período en la
+ * carpeta (para precargarlos la próxima vez), arma el PDF con el formato
+ * elegido en el orden final y lo descarga. Devuelve true si se exportó,
+ * false si se canceló.
  */
 export function openExportReviewScreen(photos, folder) {
   return new Promise((resolve) => {
-    const objectURLs = [];
+    const objectURLs = new Map();
+    for (const p of photos) objectURLs.set(p.id, URL.createObjectURL(p.blob));
+
+    const orderedPhotos = [...photos];
+    const captionDrafts = new Map(photos.map((p) => [p.id, p.title || '']));
+    let format = getFormatById(localStorage.getItem(LAST_FORMAT_KEY) || 'libre');
+
     const overlay = document.createElement('div');
     overlay.className = 'export-review';
 
@@ -45,6 +56,11 @@ export function openExportReviewScreen(photos, folder) {
               <input id="er-period" type="text" value="${escapeHTML(folder.reportPeriod || defaultPeriod())}" placeholder="Ej: Julio 2026" />
             </div>
           </div>
+          <label for="er-format">Formato del informe</label>
+          <select id="er-format">
+            ${REPORT_FORMATS.map((f) => `<option value="${f.id}" ${f.id === format.id ? 'selected' : ''}>${escapeHTML(f.label)}</option>`).join('')}
+          </select>
+          ${orderedPhotos.length > 1 ? '<p class="er-hint">Si el formato trae casilleros fijos (ej. "Casa con más avance"), usa las flechas para ordenar las fotos en la posición correcta — no hace falta escribirles nada.</p>' : ''}
         </div>
         <div class="er-photo-list" id="er-photo-list"></div>
       </div>
@@ -52,21 +68,57 @@ export function openExportReviewScreen(photos, folder) {
     document.body.appendChild(overlay);
 
     const list = overlay.querySelector('#er-photo-list');
-    list.innerHTML = photos
-      .map((p, i) => {
-        const url = URL.createObjectURL(p.blob);
-        objectURLs.push(url);
-        return `
-          <div class="er-photo-row">
-            <img src="${url}" alt="Imagen ${i + 1}" loading="lazy" />
-            <div class="er-photo-fields">
-              <span class="er-photo-label">Imagen ${i + 1}</span>
-              <input class="er-caption-input" type="text" data-photo-id="${p.id}" value="${escapeHTML(p.title || '')}" placeholder="Descripción para el informe" />
+    const formatSelect = overlay.querySelector('#er-format');
+
+    function renderList() {
+      list.innerHTML = orderedPhotos
+        .map((p, i) => {
+          const slotIndex = i % 8;
+          const fixed = fixedLabelFor(format, slotIndex);
+          const url = objectURLs.get(p.id);
+          return `
+            <div class="er-photo-row">
+              <div class="er-reorder">
+                <button type="button" class="er-move-btn" data-dir="up" data-index="${i}" ${i === 0 ? 'disabled' : ''} title="Subir">▲</button>
+                <button type="button" class="er-move-btn" data-dir="down" data-index="${i}" ${i === orderedPhotos.length - 1 ? 'disabled' : ''} title="Bajar">▼</button>
+              </div>
+              <img src="${url}" alt="Imagen ${i + 1}" loading="lazy" />
+              <div class="er-photo-fields">
+                <span class="er-photo-label">Imagen ${i + 1}</span>
+                ${fixed
+                  ? `<div class="er-fixed-caption">${escapeHTML(fixed)} <span class="er-fixed-tag">fijo</span></div>`
+                  : `<input class="er-caption-input" type="text" data-photo-id="${p.id}" value="${escapeHTML(captionDrafts.get(p.id) || '')}" placeholder="Descripción para el informe" />`
+                }
+              </div>
             </div>
-          </div>
-        `;
-      })
-      .join('');
+          `;
+        })
+        .join('');
+    }
+
+    renderList();
+
+    list.addEventListener('input', (e) => {
+      if (e.target.classList.contains('er-caption-input')) {
+        captionDrafts.set(e.target.dataset.photoId, e.target.value);
+      }
+    });
+
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('.er-move-btn');
+      if (!btn || btn.disabled) return;
+      const idx = Number(btn.dataset.index);
+      const swapWith = btn.dataset.dir === 'up' ? idx - 1 : idx + 1;
+      if (swapWith < 0 || swapWith >= orderedPhotos.length) return;
+      [orderedPhotos[idx], orderedPhotos[swapWith]] = [orderedPhotos[swapWith], orderedPhotos[idx]];
+      renderList();
+    });
+
+    formatSelect.addEventListener('change', () => {
+      format = getFormatById(formatSelect.value);
+      localStorage.setItem(LAST_FORMAT_KEY, format.id);
+      renderList();
+    });
 
     function cleanup() {
       objectURLs.forEach((u) => URL.revokeObjectURL(u));
@@ -87,14 +139,14 @@ export function openExportReviewScreen(photos, folder) {
       const reportNumber = overlay.querySelector('#er-report-number').value.trim();
       const period = overlay.querySelector('#er-period').value.trim();
 
-      const captionInputs = overlay.querySelectorAll('.er-caption-input');
-      for (const input of captionInputs) {
-        const photoId = input.dataset.photoId;
-        const value = input.value.trim();
-        const photo = photos.find((p) => p.id === photoId);
-        if (photo && photo.title !== value) {
+      for (let i = 0; i < orderedPhotos.length; i++) {
+        const photo = orderedPhotos[i];
+        const fixed = fixedLabelFor(format, i % 8);
+        if (fixed) continue; // texto fijo: no es propiedad de la foto, no se guarda
+        const value = (captionDrafts.get(photo.id) || '').trim();
+        if (photo.title !== value) {
           photo.title = value;
-          await updatePhoto(photoId, { title: value });
+          await updatePhoto(photo.id, { title: value });
         }
       }
       if (folder.id) {
@@ -103,7 +155,7 @@ export function openExportReviewScreen(photos, folder) {
 
       try {
         const blob = await buildObraReportPDF(
-          { obra, reportNumber, period, photos },
+          { obra, reportNumber, period, photos: orderedPhotos, format },
           (pageIndex, totalPages) => {
             btn.textContent = totalPages > 1 ? `Generando página ${pageIndex} de ${totalPages}…` : 'Generando PDF…';
           }

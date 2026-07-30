@@ -838,7 +838,8 @@ button {
   margin-bottom: 4px;
 }
 
-.er-header-form input {
+.er-header-form input,
+.er-header-form select {
   width: 100%;
   padding: 9px 10px;
   border: 1px solid var(--color-border);
@@ -849,6 +850,10 @@ button {
   font-family: inherit;
 }
 
+.er-header-form > select {
+  margin-top: 10px;
+}
+
 .er-row {
   display: flex;
   gap: 10px;
@@ -857,6 +862,13 @@ button {
 
 .er-field {
   flex: 1;
+}
+
+.er-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 10px 0 0;
+  line-height: 1.4;
 }
 
 .er-photo-list {
@@ -873,6 +885,31 @@ button {
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 8px;
+}
+
+.er-reorder {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.er-move-btn {
+  width: 26px;
+  height: 22px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.er-move-btn:disabled {
+  opacity: 0.3;
 }
 
 .er-photo-row img {
@@ -905,4 +942,27 @@ button {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: inherit;
+}
+
+.er-fixed-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px dashed var(--color-border);
+  border-radius: 7px;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+}
+
+.er-fixed-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background: var(--color-accent);
+  color: #1c2b4a;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 700;
 }

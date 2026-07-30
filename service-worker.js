@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v17';
+const CACHE_VERSION = 'v18';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './js/router.js',
   './js/utils.js',
   './js/pdfExport.js',
+  './js/reportFormats.js',
   './js/googleDrive.js',
   './js/sync.js',
   './js/views/foldersView.js',

@@ -1,4 +1,5 @@
 import { blobToDataURL } from './utils.js';
+import { fixedLabelFor } from './reportFormats.js';
 
 const PHOTOS_PER_PAGE = 8;
 const GRID_COLS = 2;
@@ -65,12 +66,14 @@ function drawHeader(doc, { obra, reportNumber, period }, pageW, margin) {
  * Construye el informe PDF en el formato oficial "Fotografías Desarrollo de
  * Obras": encabezado con obra / N° de informe / período, y una grilla de
  * 2×4 (8 fotos) por página, repitiendo el encabezado en cada una. La
- * cantidad de páginas se calcula sola según cuántas fotos vengan. Usa
- * `photo.title` como el texto de "Imagen N:" (ya debe venir guardado antes
- * de llamar esta función). `onProgress(pageIndex, totalPages)` es opcional,
- * para mostrar avance en exportaciones grandes.
+ * cantidad de páginas se calcula sola según cuántas fotos vengan.
+ *
+ * `format` (de `reportFormats.js`) decide el texto de cada casillero: si la
+ * posición dentro del bloque de 8 tiene un texto fijo lo usa siempre (sin
+ * importar la foto), y si es libre usa `photo.title`. `onProgress(pageIndex,
+ * totalPages)` es opcional, para mostrar avance en exportaciones grandes.
  */
-export async function buildObraReportPDF({ obra, reportNumber, period, photos }, onProgress) {
+export async function buildObraReportPDF({ obra, reportNumber, period, photos, format }, onProgress) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -115,7 +118,8 @@ export async function buildObraReportPDF({ obra, reportNumber, period, photos },
       doc.setFont(undefined, 'bold');
       doc.text(`Imagen ${imgNumber}:`, cellX + 1.5, capY + 4);
       doc.setFont(undefined, 'normal');
-      const captionLines = doc.splitTextToSize(photo.title || '', colW - 3);
+      const caption = fixedLabelFor(format, i) ?? (photo.title || '');
+      const captionLines = doc.splitTextToSize(caption, colW - 3);
       doc.text(captionLines.slice(0, 2), cellX + 1.5, capY + 8);
     }
 

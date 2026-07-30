@@ -7,6 +7,29 @@ const CLIENT_ID = '1005265173127-i5lhpkpnmi8mlraev3hvla9p2qrf2v11.apps.googleuse
 const API_KEY = 'AIzaSyBPOsLlvyl1bPtQxURmf4V-C7pUvLxZl04';
 const SCOPE = 'https://www.googleapis.com/auth/drive';
 const TOKEN_STORAGE_KEY = 'gdrive-token-v2';
+const ROOT_FOLDER_KEY = 'gdrive-root-folder';
+
+/**
+ * Carpeta raíz de Drive a la que queda restringido el selector una vez
+ * configurada (para no exponer el resto del Drive personal del usuario,
+ * por ejemplo al compartir la app con compañeros de trabajo).
+ */
+export function getDriveRootFolder() {
+  try {
+    const raw = localStorage.getItem(ROOT_FOLDER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setDriveRootFolder(folder) {
+  localStorage.setItem(ROOT_FOLDER_KEY, JSON.stringify(folder));
+}
+
+export function clearDriveRootFolder() {
+  localStorage.removeItem(ROOT_FOLDER_KEY);
+}
 
 let tokenClient = null;
 let accessToken = null;
@@ -109,9 +132,11 @@ async function ensurePickerLoaded() {
 
 /**
  * Abre el selector oficial de Google para elegir (o crear) una carpeta.
+ * Si se pasa `parentId`, el selector queda restringido a navegar solo
+ * dentro de esa carpeta (no se puede ver ni elegir nada fuera de ella).
  * Devuelve { id, name } de la carpeta elegida, o null si se cancela.
  */
-export async function openFolderPicker() {
+export async function openFolderPicker(parentId) {
   const token = await signIn();
   await ensurePickerLoaded();
 
@@ -120,12 +145,15 @@ export async function openFolderPicker() {
       .setSelectFolderEnabled(true)
       .setIncludeFolders(true)
       .setMode(window.google.picker.DocsViewMode.LIST);
+    if (parentId) {
+      view.setParent(parentId);
+    }
 
     const picker = new window.google.picker.PickerBuilder()
       .addView(view)
       .setOAuthToken(token)
       .setDeveloperKey(API_KEY)
-      .setTitle('Elige la carpeta de tu proyecto')
+      .setTitle(parentId ? 'Elige la carpeta del proyecto' : 'Elige tu carpeta raíz de proyectos')
       .setCallback((data) => {
         if (data.action === window.google.picker.Action.PICKED) {
           const doc = data.docs[0];

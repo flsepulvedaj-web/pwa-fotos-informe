@@ -15,7 +15,7 @@ import {
 import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
 import { exportFolderReport } from './exportView.js';
-import { openFolderPicker } from '../googleDrive.js';
+import { openFolderPicker, getDriveRootFolder, setDriveRootFolder, clearDriveRootFolder } from '../googleDrive.js';
 import { trySync, syncFoldersFromDrive, createMatchingDriveFolder } from '../sync.js';
 
 let objectURLs = [];
@@ -55,6 +55,7 @@ export async function renderFoldersView(container, folderId) {
       <nav class="breadcrumbs" id="breadcrumbs"></nav>
       <div class="header-actions">
         ${folderId !== ROOT_ID ? '<button class="icon-btn" id="btn-folder-menu" title="Opciones de la carpeta">⋮</button>' : ''}
+        ${folderId === ROOT_ID ? '<button class="icon-btn" id="btn-drive-settings" title="Configurar Google Drive">⚙️</button>' : ''}
         <button class="icon-btn" id="btn-select" title="Seleccionar" ${photos.length ? '' : 'disabled'}>✓</button>
       </div>
     </header>
@@ -141,6 +142,29 @@ export async function renderFoldersView(container, folderId) {
   const btnFolderMenu = container.querySelector('#btn-folder-menu');
   if (btnFolderMenu) {
     btnFolderMenu.addEventListener('click', () => openFolderMenu(currentFolder));
+  }
+
+  const btnDriveSettings = container.querySelector('#btn-drive-settings');
+  if (btnDriveSettings) {
+    btnDriveSettings.addEventListener('click', async () => {
+      const root = getDriveRootFolder();
+      const action = await driveSettingsSheet(root);
+      if (action === 'change') {
+        try {
+          const picked = await openFolderPicker();
+          if (picked) {
+            setDriveRootFolder(picked);
+            toast(`Carpeta raíz de Drive actualizada a "${picked.name}".`);
+          }
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google Drive.');
+        }
+      } else if (action === 'clear') {
+        clearDriveRootFolder();
+        toast('Restricción quitada: la próxima vez el selector mostrará todo tu Drive.');
+      }
+    });
   }
 
   // Nueva carpeta
@@ -315,10 +339,16 @@ export async function renderFoldersView(container, folderId) {
       renderFoldersView(container, folderId);
     } else if (action === 'link-drive') {
       try {
-        const picked = await openFolderPicker();
+        const root = getDriveRootFolder();
+        const picked = await openFolderPicker(root ? root.id : undefined);
         if (picked) {
           await updateFolder(folder.id, { driveFolderId: picked.id, driveFolderName: picked.name });
-          toast(`Enlazada con "${picked.name}" de Drive.`);
+          if (!root) {
+            setDriveRootFolder(picked);
+            toast(`"${picked.name}" quedó como tu carpeta raíz de Drive. Desde ahora el selector solo mostrará lo que haya dentro de ella.`);
+          } else {
+            toast(`Enlazada con "${picked.name}" de Drive.`);
+          }
           renderFoldersView(container, folderId);
         }
       } catch (err) {
@@ -406,6 +436,37 @@ function renderBreadcrumbs(path) {
         : `<a class="crumb" href="${href}">${escapeHTML(c.name)}</a><span class="crumb-sep">›</span>`;
     })
     .join('');
+}
+
+function driveSettingsSheet(root) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal action-sheet" role="dialog" aria-modal="true">
+        <h2>Google Drive</h2>
+        <p class="modal-message">
+          ${root
+            ? `El selector está restringido a la carpeta <strong>"${escapeHTML(root.name)}"</strong> — no se puede ver ni elegir nada fuera de ella.`
+            : 'Todavía no has enlazado ninguna carpeta, así que el selector no tiene restricción configurada.'}
+        </p>
+        <button class="sheet-action" data-action="change">📁 ${root ? 'Cambiar' : 'Elegir'} carpeta raíz</button>
+        ${root ? '<button class="sheet-action sheet-danger" data-action="clear">🗑️ Quitar restricción</button>' : ''}
+        <button class="sheet-action" data-action="cancel">Cancelar</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    function cleanup(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(null);
+      const btn = e.target.closest('[data-action]');
+      if (btn) cleanup(btn.dataset.action === 'cancel' ? null : btn.dataset.action);
+    });
+  });
 }
 
 function folderActionSheet(folder) {

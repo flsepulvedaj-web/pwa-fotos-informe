@@ -6,6 +6,43 @@ import { trySync } from '../sync.js';
 let activeStream = null;
 let facingMode = 'environment';
 
+// Lista de lentes traseros del teléfono (ej. principal + ultra angular),
+// detectada una sola vez por sesión de la app (abrir/cerrar cámaras repetidas
+// veces para probarlas causa parpadeo, así que se guarda en caché). No todos
+// los teléfonos informan el lente angular como "zoom" del lente principal
+// (de hecho varios Samsung no lo hacen), así que en vez de adivinarlo se deja
+// que el usuario los recorra a mano con el botón "Lente" y se recuerda cuál
+// eligió la última vez.
+const LENS_STORAGE_KEY = 'camera-lens-device-id';
+let backCameraDevices = null;
+
+async function probeBackCameras() {
+  if (backCameraDevices) return backCameraDevices;
+  if (!navigator.mediaDevices?.enumerateDevices) return (backCameraDevices = []);
+
+  let devices;
+  try {
+    devices = await navigator.mediaDevices.enumerateDevices();
+  } catch {
+    return (backCameraDevices = []);
+  }
+  const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+  if (videoInputs.length <= 1) return (backCameraDevices = videoInputs);
+
+  const candidates = [];
+  for (const d of videoInputs) {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: d.deviceId } }, audio: false });
+      const settings = s.getVideoTracks()[0]?.getSettings?.() ?? {};
+      s.getTracks().forEach((t) => t.stop());
+      if (!settings.facingMode || settings.facingMode === 'environment') candidates.push(d);
+    } catch {
+      // este lente no se pudo abrir para probarlo, se descarta
+    }
+  }
+  return (backCameraDevices = candidates.length ? candidates : videoInputs);
+}
+
 function stopStream() {
   if (activeStream) {
     activeStream.getTracks().forEach((track) => track.stop());
@@ -60,6 +97,7 @@ export async function renderCameraView(container, folderId) {
 
       <div class="camera-topbar">
         <button class="icon-btn camera-close" id="btn-close">✕</button>
+        <button class="btn btn-secondary camera-lens" id="btn-lens" hidden></button>
         <button class="btn btn-primary camera-done" id="btn-done">Listo</button>
       </div>
 
@@ -93,6 +131,7 @@ export async function renderCameraView(container, folderId) {
   const lastShotImg = container.querySelector('#last-shot-img');
   const shotCount = container.querySelector('#shot-count');
   const zoomEl = container.querySelector('#camera-zoom');
+  const lensBtn = container.querySelector('#btn-lens');
 
   function goBack() {
     sessionPhotos.forEach((p) => URL.revokeObjectURL(p.url));
@@ -159,33 +198,69 @@ export async function renderCameraView(container, folderId) {
     applyZoom(Number(btn.dataset.zoom));
   });
 
+  function updateLensButtonUI() {
+    if (facingMode !== 'environment' || !backCameraDevices || backCameraDevices.length <= 1) {
+      lensBtn.hidden = true;
+      return;
+    }
+    const currentId = activeStream?.getVideoTracks()[0]?.getSettings?.().deviceId;
+    const idx = Math.max(0, backCameraDevices.findIndex((d) => d.deviceId === currentId));
+    lensBtn.hidden = false;
+    lensBtn.textContent = `Lente ${idx + 1}/${backCameraDevices.length}`;
+  }
+
+  lensBtn.addEventListener('click', async () => {
+    if (!backCameraDevices || backCameraDevices.length <= 1) return;
+    const currentId = activeStream?.getVideoTracks()[0]?.getSettings?.().deviceId;
+    const idx = Math.max(0, backCameraDevices.findIndex((d) => d.deviceId === currentId));
+    const next = backCameraDevices[(idx + 1) % backCameraDevices.length];
+    localStorage.setItem(LENS_STORAGE_KEY, next.deviceId);
+    stopStream();
+    await startCamera();
+    toast(`Cambiado a ${lensBtn.textContent} — se recuerda para la próxima vez.`);
+  });
+
   async function startCamera() {
     try {
-      // Pedir el zoom 0.6 (angular) desde el inicio, no después: en varios
-      // teléfonos (Samsung incluido) el lente principal ya abierto solo
-      // acepta zoom desde 1x en adelante, pero si se pide como parte de la
-      // constraint inicial el navegador puede elegir directamente el lente
-      // ultra angular para satisfacerla.
-      const videoConstraints = { facingMode: { ideal: facingMode } };
-      if (facingMode === 'environment') videoConstraints.zoom = { ideal: 0.6 };
+      // La primera vez que se abre la cámara trasera en esta sesión hay que
+      // detectar qué otros lentes tiene el teléfono. La mayoría de los
+      // teléfonos no permiten tener dos cámaras abiertas a la vez, así que
+      // ese sondeo se hace con la cámara principal cerrada (un parpadeo
+      // único la primera vez, no en cada foto).
+      if (facingMode === 'environment' && backCameraDevices === null) {
+        const probeStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+        probeStream.getTracks().forEach((t) => t.stop());
+        await probeBackCameras();
+      }
+
+      // Si ya se sabe qué lente eligió el usuario con el botón "Lente", abrir
+      // ese directamente. Si no, dejar que el teléfono elija el principal
+      // como siempre, e intentar además que parta en 0.6x (funciona en
+      // algunos teléfonos, no en todos).
+      const savedLensId = facingMode === 'environment' ? localStorage.getItem(LENS_STORAGE_KEY) : null;
+      const savedLensStillValid = savedLensId && backCameraDevices?.some((d) => d.deviceId === savedLensId);
+      const videoConstraints = savedLensStillValid
+        ? { deviceId: { exact: savedLensId } }
+        : { facingMode: { ideal: facingMode } };
+      if (!savedLensStillValid && facingMode === 'environment') videoConstraints.zoom = { ideal: 0.6 };
 
       try {
         activeStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
       } catch (err) {
-        // Si el navegador rechaza la constraint de zoom (OverconstrainedError
-        // en dispositivos que no la soportan en absoluto), reintentar sin ella.
-        if (videoConstraints.zoom) {
-          activeStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: facingMode } },
-            audio: false,
-          });
-        } else {
-          throw err;
-        }
+        // El lente guardado ya no existe, o el teléfono rechaza la constraint
+        // de zoom de plano (OverconstrainedError): reintentar con lo mínimo.
+        activeStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode } },
+          audio: false,
+        });
       }
       video.srcObject = activeStream;
       errorEl.hidden = true;
       await initZoom();
+      updateLensButtonUI();
     } catch (err) {
       console.error('Error accediendo a la cámara:', err);
       errorEl.hidden = false;

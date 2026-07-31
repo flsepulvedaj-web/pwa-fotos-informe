@@ -678,6 +678,14 @@ button {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
+.camera-lens {
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+
 .camera-flip {
   color: #fff;
   background: rgba(255, 255, 255, 0.15);

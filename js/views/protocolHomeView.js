@@ -14,6 +14,7 @@ export async function renderProtocolHomeView(container) {
     <header class="app-header">
       <button class="icon-btn" id="btn-back-home" title="Volver al inicio">←</button>
       <span class="header-title">Protocolos</span>
+      <button class="icon-btn" id="btn-drafts" title="Protocolos en curso">📝</button>
     </header>
     <main class="view-content">
       ${obras.length ? `
@@ -38,6 +39,7 @@ export async function renderProtocolHomeView(container) {
   `;
 
   container.querySelector('#btn-back-home').addEventListener('click', () => navigate('/'));
+  container.querySelector('#btn-drafts').addEventListener('click', () => navigate('/protocolos/en-curso'));
 
   container.querySelectorAll('.obra-tile').forEach((tile) => {
     tile.addEventListener('click', () => navigate(`/protocolos/obra/${tile.dataset.obraId}`));

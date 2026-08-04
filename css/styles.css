@@ -1263,8 +1263,117 @@ button {
   margin-bottom: 6px;
 }
 
-.control-point-status {
+.cp-status-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cp-status-btn {
+  flex: 1;
+  min-width: 70px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cp-status-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cp-status-btn.cp-status-CUMPLE.active {
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+
+.cp-status-btn.cp-status-NO_CUMPLE.active {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #fff;
+}
+
+.cp-status-btn.cp-status-CUMPLE_PARCIAL.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #1c2b4a;
+}
+
+.cp-status-btn.cp-status-N_A.active {
+  background: var(--color-text-muted);
+  border-color: var(--color-text-muted);
+  color: #fff;
+}
+
+.protocol-status-pill {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.protocol-status-pill.protocol-status-draft {
+  background: var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.protocol-status-pill.protocol-status-emitted {
+  background: var(--color-accent);
+  color: #1c2b4a;
+}
+
+.protocol-form-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 12px;
+}
+
+.protocol-form-fields label {
   font-size: 12px;
   color: var(--color-text-muted);
-  font-style: italic;
+  margin-top: 6px;
+}
+
+.protocol-form-fields input {
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+}
+
+.protocol-observaciones {
+  padding: 4px 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.protocol-observaciones label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.protocol-observaciones textarea {
+  min-height: 90px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  resize: vertical;
 }

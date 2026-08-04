@@ -8,6 +8,7 @@ import { renderPhotoView } from './views/photoView.js';
 import { renderProtocolHomeView } from './views/protocolHomeView.js';
 import { renderProtocolObraView } from './views/protocolObraView.js';
 import { renderProtocolFormView } from './views/protocolFormView.js';
+import { renderProtocolDraftsView } from './views/protocolDraftsView.js';
 
 const appEl = document.getElementById('app');
 
@@ -23,6 +24,7 @@ registerRoute('/fotos/photo/:id', ({ id }) => renderPhotoView(appEl, id));
 
 // Módulo Protocolos (checklist de calidad + firma digital).
 registerRoute('/protocolos', () => renderProtocolHomeView(appEl));
+registerRoute('/protocolos/en-curso', () => renderProtocolDraftsView(appEl));
 registerRoute('/protocolos/obra/:obraId', ({ obraId }) => renderProtocolObraView(appEl, obraId));
 registerRoute('/protocolos/instancia/:id', ({ id }) => renderProtocolFormView(appEl, id));
 

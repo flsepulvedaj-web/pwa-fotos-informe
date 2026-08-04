@@ -32,6 +32,36 @@ export function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.9) {
   return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
 }
 
+/**
+ * Reduce una foto importada (ej. de la galería, tomada con la cámara nativa
+ * del teléfono en resolución completa) a un tamaño liviano, para que los
+ * informes de 200+ fotos no pesen kilos. Mantiene la orientación EXIF
+ * correcta dibujándola en un canvas (el navegador ya la rota solo al
+ * decodificarla ahí). No agranda fotos que ya sean chicas.
+ */
+export function downscaleImageBlob(blob, maxDim = 1600, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvasToBlob(canvas, 'image/jpeg', quality).then(resolve);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudo leer la imagen'));
+    };
+    img.src = url;
+  });
+}
+
 export function escapeHTML(str) {
   const div = document.createElement('div');
   div.textContent = str ?? '';

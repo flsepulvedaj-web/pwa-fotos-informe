@@ -12,9 +12,10 @@ import {
   getPinnedFolders,
   movePhotos,
   deletePhoto,
+  addPhoto,
 } from '../db.js';
 import { navigate } from '../router.js';
-import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
+import { promptDialog, confirmDialog, toast, escapeHTML, downscaleImageBlob } from '../utils.js';
 import { openExportReviewScreen } from './exportView.js';
 import {
   openFolderPicker,
@@ -106,8 +107,10 @@ export async function renderFoldersView(container, folderId) {
         <button class="fab fab-secondary" data-shortcut-folder-id="${f.id}" title="${escapeHTML(f.name)}">📖</button>
       `).join('')}
       <button class="fab fab-secondary" id="btn-new-folder" title="Nueva carpeta">📁➕</button>
+      <button class="fab fab-secondary" id="btn-gallery" title="Elegir foto de la galería">🖼️</button>
       <button class="fab fab-primary" id="btn-camera" title="Tomar foto">📷</button>
     </div>
+    <input type="file" id="gallery-input" accept="image/*" multiple hidden />
 
     <div class="selection-bar" id="selection-bar" hidden>
       <span id="selection-count">0 seleccionadas</span>
@@ -305,6 +308,39 @@ export async function renderFoldersView(container, folderId) {
   // Cámara
   container.querySelector('#btn-camera').addEventListener('click', () => {
     navigate(`/camera/${folderId === ROOT_ID ? 'root' : folderId}`);
+  });
+
+  // Elegir de la galería: para cuando la cámara del navegador no llega al
+  // lente que se necesita (ej. angular 0.6x), se puede tomar la foto con la
+  // cámara nativa del teléfono y traerla acá — esa sí tiene acceso a todos
+  // los lentes del teléfono, sea cual sea el modelo.
+  const galleryInput = container.querySelector('#gallery-input');
+  container.querySelector('#btn-gallery').addEventListener('click', () => galleryInput.click());
+  galleryInput.addEventListener('change', async () => {
+    const files = [...galleryInput.files];
+    galleryInput.value = '';
+    if (!files.length) return;
+
+    const linkedToDrive = !!currentFolder.driveFolderId;
+    let added = 0;
+    for (const file of files) {
+      try {
+        const blob = await downscaleImageBlob(file);
+        await addPhoto({
+          folderId,
+          blob,
+          title: '',
+          note: '',
+          syncStatus: linkedToDrive ? 'pending' : null,
+        });
+        added++;
+      } catch (err) {
+        console.error('Error importando foto de la galería:', err);
+      }
+    }
+    if (linkedToDrive && added) trySync();
+    if (added) toast(added === 1 ? 'Foto agregada.' : `${added} fotos agregadas.`);
+    renderFoldersView(container, folderId);
   });
 
   // Selección múltiple

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v24';
+const CACHE_VERSION = 'v25';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -21,6 +21,8 @@ const APP_SHELL = [
   './js/views/photoView.js',
   './js/views/exportView.js',
   './js/views/protocolHomeView.js',
+  './js/views/protocolObraView.js',
+  './js/views/protocolFormView.js',
   './vendor/jspdf.umd.min.js',
   './icons/icon-192.png',
   './icons/icon-512.png',

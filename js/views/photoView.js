@@ -12,11 +12,11 @@ export async function renderPhotoView(container, photoId) {
 
   const photo = await getPhoto(photoId);
   if (!photo) {
-    navigate('/');
+    navigate('/fotos');
     return;
   }
 
-  const backPath = photo.folderId ? `/folder/${photo.folderId}` : '/';
+  const backPath = photo.folderId ? `/fotos/folder/${photo.folderId}` : '/fotos';
   currentURL = URL.createObjectURL(photo.blob);
 
   container.innerHTML = `

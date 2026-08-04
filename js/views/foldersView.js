@@ -199,7 +199,7 @@ export async function renderFoldersView(container, folderId) {
         updateFolderSelectionUI();
         return;
       }
-      navigate(`/folder/${tile.dataset.folderId}`);
+      navigate(`/fotos/folder/${tile.dataset.folderId}`);
     });
   });
 
@@ -253,7 +253,7 @@ export async function renderFoldersView(container, folderId) {
 
   // Accesos directos (carpetas fijadas)
   container.querySelectorAll('[data-shortcut-folder-id]').forEach((btn) => {
-    btn.addEventListener('click', () => navigate(`/folder/${btn.dataset.shortcutFolderId}`));
+    btn.addEventListener('click', () => navigate(`/fotos/folder/${btn.dataset.shortcutFolderId}`));
   });
 
   // Opciones de la carpeta actual (útil sobre todo para una fijada, que ya
@@ -307,7 +307,7 @@ export async function renderFoldersView(container, folderId) {
 
   // Cámara
   container.querySelector('#btn-camera').addEventListener('click', () => {
-    navigate(`/camera/${folderId === ROOT_ID ? 'root' : folderId}`);
+    navigate(`/fotos/camera/${folderId === ROOT_ID ? 'root' : folderId}`);
   });
 
   // Elegir de la galería: para cuando la cámara del navegador no llega al
@@ -424,7 +424,7 @@ export async function renderFoldersView(container, folderId) {
         return;
       }
       if (!selectMode) {
-        navigate(`/photo/${tile.dataset.photoId}`);
+        navigate(`/fotos/photo/${tile.dataset.photoId}`);
         return;
       }
       const id = tile.dataset.photoId;
@@ -569,7 +569,7 @@ function renderBreadcrumbs(path) {
   nav.innerHTML = crumbs
     .map((c, i) => {
       const isLast = i === crumbs.length - 1;
-      const href = c.id ? `#/folder/${c.id}` : '#/';
+      const href = c.id ? `#/fotos/folder/${c.id}` : '#/fotos';
       return isLast
         ? `<span class="crumb crumb-current">${escapeHTML(c.name)}</span>`
         : `<a class="crumb" href="${href}">${escapeHTML(c.name)}</a><span class="crumb-sep">›</span>`;

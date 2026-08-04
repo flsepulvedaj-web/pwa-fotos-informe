@@ -1040,3 +1040,74 @@ button {
   border-radius: 999px;
   font-weight: 700;
 }
+
+/* ---------- Inicio / selector de módulo ---------- */
+
+.home-view {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 24px;
+}
+
+.home-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.home-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+}
+
+.home-header h1 {
+  font-size: 22px;
+  color: var(--color-primary);
+}
+
+.home-modules {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 340px;
+}
+
+.module-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.module-card:active {
+  transform: scale(0.98);
+}
+
+.module-icon {
+  font-size: 34px;
+}
+
+.module-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.module-desc {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+}

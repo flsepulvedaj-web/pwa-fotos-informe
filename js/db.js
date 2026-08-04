@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -26,6 +26,22 @@ function openDB() {
       if (!db.objectStoreNames.contains('photos')) {
         const photos = db.createObjectStore('photos', { keyPath: 'id' });
         photos.createIndex('by_folderId', 'folderId', { unique: false });
+      }
+
+      // Módulo Protocolos (v2): árbol completamente aparte del de fotos —
+      // no son carpetas anidadas, son obras con protocolos adentro.
+      if (!db.objectStoreNames.contains('obras')) {
+        db.createObjectStore('obras', { keyPath: 'id' });
+      }
+
+      if (!db.objectStoreNames.contains('protocolInstances')) {
+        const instances = db.createObjectStore('protocolInstances', { keyPath: 'id' });
+        instances.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('protocolPhotos')) {
+        const protocolPhotos = db.createObjectStore('protocolPhotos', { keyPath: 'id' });
+        protocolPhotos.createIndex('by_instanceId', 'instanceId', { unique: false });
       }
     };
 
@@ -178,4 +194,138 @@ export async function movePhotos(ids, targetFolderId) {
   for (const id of ids) {
     await updatePhoto(id, { folderId: targetFolderId });
   }
+}
+
+// ---------- Protocolos: obras ----------
+
+export async function createObra(name) {
+  const store = await tx('obras', 'readwrite');
+  const obra = {
+    id: uuid(),
+    name,
+    createdAt: Date.now(),
+    driveObraFolderId: null,
+    driveObraFolderName: null,
+    planosDriveFolderId: null,
+    planosDriveFolderName: null,
+    signedDriveFolderId: null,
+    signedDriveFolderName: null,
+  };
+  await wrap(store.add(obra));
+  return obra;
+}
+
+export async function getObra(id) {
+  const store = await tx('obras', 'readonly');
+  return wrap(store.get(id));
+}
+
+export async function getAllObras() {
+  const store = await tx('obras', 'readonly');
+  const all = await wrap(store.getAll());
+  return all.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+}
+
+export async function updateObra(id, changes) {
+  const store = await tx('obras', 'readwrite');
+  const obra = await wrap(store.get(id));
+  if (!obra) return null;
+  Object.assign(obra, changes);
+  await wrap(store.put(obra));
+  return obra;
+}
+
+export async function deleteObra(id) {
+  const instances = await getInstancesByObra(id);
+  for (const instance of instances) {
+    await deleteProtocolInstance(instance.id);
+  }
+  const store = await tx('obras', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Protocolos: instancias ----------
+
+export async function createProtocolInstance({ obraId, templateId, templateTitle, header, controlPoints }) {
+  const store = await tx('protocolInstances', 'readwrite');
+  const now = Date.now();
+  const instance = {
+    id: uuid(),
+    obraId,
+    templateId,
+    templateTitle,
+    status: 'draft', // 'draft' | 'emitted'
+    createdAt: now,
+    updatedAt: now,
+    emittedAt: null,
+    header: { obra: '', cliente: '', ubicacion: '', area: '', plano: '', sector: '', ...header },
+    // Copia (snapshot) de los puntos de control del template al momento de
+    // crear el protocolo — si más adelante se corrige un texto en
+    // protocolTemplates.js, los borradores ya empezados no cambian solos.
+    controlPoints: controlPoints.map((cp) => ({ label: cp.label, instruction: cp.instruction, status: null })),
+    observaciones: '',
+    plano: null, // { driveFileId, driveFileName, blob } | null
+    signatures: {}, // { [roleId]: { nombre, fecha, signatureBlob } }
+    pdfDriveFileId: null,
+    pdfDriveFileName: null,
+  };
+  await wrap(store.add(instance));
+  return instance;
+}
+
+export async function getProtocolInstance(id) {
+  const store = await tx('protocolInstances', 'readonly');
+  return wrap(store.get(id));
+}
+
+export async function getDraftInstances() {
+  const store = await tx('protocolInstances', 'readonly');
+  const all = await wrap(store.getAll());
+  return all.filter((i) => i.status === 'draft').sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function getInstancesByObra(obraId) {
+  const store = await tx('protocolInstances', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function updateProtocolInstance(id, changes) {
+  const store = await tx('protocolInstances', 'readwrite');
+  const instance = await wrap(store.get(id));
+  if (!instance) return null;
+  Object.assign(instance, changes, { updatedAt: Date.now() });
+  await wrap(store.put(instance));
+  return instance;
+}
+
+export async function deleteProtocolInstance(id) {
+  const photos = await getProtocolPhotosByInstance(id);
+  for (const photo of photos) {
+    await deleteProtocolPhoto(photo.id);
+  }
+  const store = await tx('protocolInstances', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Protocolos: fotos ----------
+
+export async function addProtocolPhoto({ instanceId, blob }) {
+  const store = await tx('protocolPhotos', 'readwrite');
+  const photo = { id: uuid(), instanceId, blob, createdAt: Date.now() };
+  await wrap(store.add(photo));
+  return photo;
+}
+
+export async function getProtocolPhotosByInstance(instanceId) {
+  const store = await tx('protocolPhotos', 'readonly');
+  const index = store.index('by_instanceId');
+  const results = await wrap(index.getAll(instanceId));
+  return results.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function deleteProtocolPhoto(id) {
+  const store = await tx('protocolPhotos', 'readwrite');
+  await wrap(store.delete(id));
 }

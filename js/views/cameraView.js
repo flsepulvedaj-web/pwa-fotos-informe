@@ -137,7 +137,7 @@ export async function renderCameraView(container, folderId) {
     sessionPhotos.forEach((p) => URL.revokeObjectURL(p.url));
     stopStream();
     relockPortrait();
-    navigate(folderId ? `/folder/${folderId}` : '/');
+    navigate(folderId ? `/fotos/folder/${folderId}` : '/fotos');
   }
 
   container.querySelector('#btn-close').addEventListener('click', goBack);

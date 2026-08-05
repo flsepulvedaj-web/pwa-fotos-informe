@@ -6,12 +6,13 @@ import {
   addProtocolPhoto,
   deleteProtocolPhoto,
   getObra,
+  updateObra,
 } from '../db.js';
 import { CONTROL_STATUS, SIGNATURE_ROLES, GATING_ROLE } from '../protocolTemplates.js';
 import { navigate } from '../router.js';
 import { escapeHTML, formatDate, downscaleImageBlob, confirmDialog, toast } from '../utils.js';
 import { openSignaturePad } from '../signaturePad.js';
-import { listDriveFiles, downloadDriveFile } from '../googleDrive.js';
+import { listDriveFiles, downloadDriveFile, openFolderPicker } from '../googleDrive.js';
 
 const HEADER_FIELDS = [
   { key: 'obra', label: 'Obra' },
@@ -87,6 +88,9 @@ export async function renderProtocolFormView(container, instanceId) {
         ` : `
           <button type="button" class="btn btn-secondary" id="btn-choose-plano">🗺️ Elegir plano</button>
         `}
+        ${!readOnly && obra?.planosDriveFolderId ? `
+          <button type="button" class="protocol-plano-forget" id="btn-forget-plano-folder">¿Carpeta equivocada? Cambiarla</button>
+        ` : ''}
       </section>
 
       <section class="protocol-photos">
@@ -162,25 +166,49 @@ export async function renderProtocolFormView(container, instanceId) {
     }, 500);
   });
 
-  // Planimetría: se elige desde la carpeta de planos de la obra en Drive
-  // (Pancho los convierte de CAD a imagen antes de subirlos), se descarga y
-  // se cachea localmente — offline-first, como el resto de la app.
+  // Planimetría: la primera vez que se elige un plano en esta obra, se deja
+  // a Pancho navegar y elegir a mano la carpeta donde están sus planos (más
+  // simple y confiable que intentar adivinar/crear el nombre de esa
+  // carpeta) — esa elección queda guardada en la obra, así que la próxima
+  // vez va directo a la lista de imágenes, sin volver a preguntar.
   const choosePlano = async () => {
-    if (!obra?.planosDriveFolderId) {
+    if (!obra?.driveObraFolderId) {
       toast('Primero vincula esta obra con Drive (☁️ arriba en la pantalla de la obra) para poder elegir un plano.');
       return;
     }
+
+    let planosFolderId = obra.planosDriveFolderId;
+    let planosFolderName = obra.planosDriveFolderName;
+
+    if (!planosFolderId) {
+      toast('Elige la carpeta donde están los planos de esta obra…');
+      let picked;
+      try {
+        picked = await openFolderPicker(obra.driveObraFolderId);
+      } catch (err) {
+        console.error(err);
+        toast('No se pudo conectar con Google Drive.');
+        return;
+      }
+      if (!picked) return;
+      planosFolderId = picked.id;
+      planosFolderName = picked.name;
+      await updateObra(obra.id, { planosDriveFolderId: planosFolderId, planosDriveFolderName: planosFolderName });
+      obra.planosDriveFolderId = planosFolderId;
+      obra.planosDriveFolderName = planosFolderName;
+    }
+
     let files;
     try {
       toast('Buscando planos…');
-      files = await listDriveFiles(obra.planosDriveFolderId);
+      files = await listDriveFiles(planosFolderId);
     } catch (err) {
       console.error(err);
       toast('No se pudo conectar con Google Drive.');
       return;
     }
     if (!files.length) {
-      toast(`No hay imágenes en "${obra.planosDriveFolderName}" todavía.`);
+      toast(`No hay imágenes en "${planosFolderName}" todavía.`);
       return;
     }
     const picked = await planoPickerDialog(files);
@@ -200,6 +228,15 @@ export async function renderProtocolFormView(container, instanceId) {
   };
   container.querySelector('#btn-choose-plano')?.addEventListener('click', choosePlano);
   container.querySelector('#btn-change-plano')?.addEventListener('click', choosePlano);
+
+  // Escape hatch por si se eligió la carpeta de planos equivocada: la
+  // olvida y la próxima vez vuelve a preguntar cuál usar.
+  container.querySelector('#btn-forget-plano-folder')?.addEventListener('click', async () => {
+    await updateObra(obra.id, { planosDriveFolderId: null, planosDriveFolderName: null });
+    obra.planosDriveFolderId = null;
+    obra.planosDriveFolderName = null;
+    toast('Carpeta de planos olvidada. La próxima vez se vuelve a elegir.');
+  });
 
   // Fotografías: mismo mecanismo que "elegir de la galería" en Proyectos —
   // en el celular el propio selector del sistema ofrece cámara o galería,

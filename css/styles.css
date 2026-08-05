@@ -1597,6 +1597,18 @@ button {
   color: var(--color-text-muted);
 }
 
+.protocol-plano-forget {
+  display: block;
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .obra-drive-badge {
   position: absolute;
   top: 6px;

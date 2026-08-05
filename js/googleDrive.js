@@ -306,24 +306,26 @@ export async function downloadDriveFile(fileId) {
 }
 
 /**
- * Busca una subcarpeta por nombre exacto dentro de una carpeta de Drive; si
- * no existe, la crea. Se usa para armar el árbol OBRAS/<obra>/PLANOS.../
- * PROTOCOLOS FIRMADOS sin duplicar carpetas si ya existían (ej. porque
- * Pancho las armó a mano de antemano).
+ * Busca una subcarpeta dentro de una carpeta de Drive comparando el nombre
+ * sin importar mayúsculas/minúsculas ni espacios de más; si no existe, la
+ * crea. Se usa para armar el árbol OBRAS/<obra>/PLANOS.../PROTOCOLOS
+ * FIRMADOS sin duplicar carpetas si ya existían (ej. porque Pancho las armó
+ * a mano de antemano). Antes esto comparaba el nombre EXACTO vía la query
+ * de Drive (`name='...'`) y en la práctica no encontraba carpetas ya
+ * existentes con la misma pinta (algún espacio o mayúscula distinta),
+ * creando duplicados — por eso ahora se listan todas las subcarpetas y se
+ * compara en el navegador, más tolerante.
  */
 export async function findOrCreateDriveFolder(parentId, name) {
-  const token = await signIn();
-  const q = encodeURIComponent(
-    `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false and name='${name.replace(/'/g, "\\'")}'`
-  );
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1&spaces=drive`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (res.ok) {
-    const data = await res.json();
-    if (data.files && data.files.length) return data.files[0];
+  let existing = [];
+  try {
+    existing = await listDriveFolders(parentId);
+  } catch (err) {
+    console.error('No se pudo listar subcarpetas de Drive antes de crear una nueva:', err);
   }
+  const target = name.trim().toLowerCase();
+  const match = existing.find((f) => f.name.trim().toLowerCase() === target);
+  if (match) return match;
   return createDriveFolder(parentId, name);
 }
 

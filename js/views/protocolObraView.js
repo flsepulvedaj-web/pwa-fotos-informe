@@ -90,20 +90,17 @@ export async function renderProtocolObraView(container, obraId) {
       if (!picked) return;
 
       toast('Preparando carpetas en Drive…');
-      // Pancho nombra sus carpetas de obra "OBRA DE <sitio>" y sus planos
-      // "PLANOS DE OBRA DE <sitio>" — si se pega "PLANOS DE OBRA DE " +
-      // nombre completo de la carpeta elegida, queda duplicado ("...DE OBRA
-      // DE OBRA DE PRUEBA"). Se saca el prefijo "OBRA DE " si ya viene en el
-      // nombre, para armar el mismo nombre que él ya usa a mano.
-      const siteName = picked.name.replace(/^OBRA\s+DE\s+/i, '').trim() || picked.name;
-      const planos = await findOrCreateDriveFolder(picked.id, `PLANOS DE OBRA DE ${siteName}`);
+      // La carpeta de planos ya NO se adivina/crea acá — Pancho la elige a
+      // mano la primera vez que toca "Elegir plano" en un protocolo (ver
+      // protocolFormView.js), porque intentar armar su nombre automático
+      // resultó frágil (nombres duplicados, o no encontraba la carpeta real
+      // que ya tenía sus planos). "PROTOCOLOS FIRMADOS" sí se arma sola
+      // porque ese nombre es siempre el mismo, no depende de la obra.
       const firmados = await findOrCreateDriveFolder(picked.id, 'PROTOCOLOS FIRMADOS');
 
       await updateObra(obraId, {
         driveObraFolderId: picked.id,
         driveObraFolderName: picked.name,
-        planosDriveFolderId: planos.id,
-        planosDriveFolderName: planos.name,
         signedDriveFolderId: firmados.id,
         signedDriveFolderName: firmados.name,
       });

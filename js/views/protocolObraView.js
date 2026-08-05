@@ -1,7 +1,8 @@
-import { getObra, getInstancesByObra, createProtocolInstance, deleteProtocolInstance } from '../db.js';
+import { getObra, updateObra, getInstancesByObra, createProtocolInstance, deleteProtocolInstance } from '../db.js';
 import { PROTOCOL_TEMPLATES } from '../protocolTemplates.js';
 import { navigate } from '../router.js';
 import { escapeHTML, formatDate, confirmDialog, toast } from '../utils.js';
+import { getProtocolsRootFolder, findOrCreateDriveFolder, openFolderPicker } from '../googleDrive.js';
 
 const STATUS_LABEL = { draft: 'Borrador', emitted: 'Emitido' };
 
@@ -20,6 +21,7 @@ export async function renderProtocolObraView(container, obraId) {
     <header class="app-header">
       <button class="icon-btn" id="btn-back" title="Volver">←</button>
       <span class="header-title">${escapeHTML(obra.name)}</span>
+      <button class="icon-btn" id="btn-drive-link" title="${obra.driveObraFolderId ? 'Enlazada con Google Drive' : 'Vincular con Google Drive'}">${obra.driveObraFolderId ? '☁️' : '🔗'}</button>
     </header>
     <main class="view-content">
       ${instances.length ? `
@@ -50,6 +52,51 @@ export async function renderProtocolObraView(container, obraId) {
   `;
 
   container.querySelector('#btn-back').addEventListener('click', () => navigate('/protocolos'));
+
+  container.querySelector('#btn-drive-link').addEventListener('click', async () => {
+    if (obra.driveObraFolderId) {
+      const ok = await confirmDialog(`Esta obra está enlazada con "${obra.driveObraFolderName}" en Drive. ¿Desenlazarla? Lo que ya subiste queda en Drive tal como está; los protocolos que se emitan después no se subirán solos.`);
+      if (!ok) return;
+      await updateObra(obraId, {
+        driveObraFolderId: null, driveObraFolderName: null,
+        planosDriveFolderId: null, planosDriveFolderName: null,
+        signedDriveFolderId: null, signedDriveFolderName: null,
+      });
+      toast('Obra desenlazada.');
+      renderProtocolObraView(container, obraId);
+      return;
+    }
+
+    const root = getProtocolsRootFolder();
+    if (!root) {
+      toast('Primero hay que vincular la carpeta "PROTOCOLOS" desde los ajustes (⚙️ en la pantalla anterior, solo el admin la ve).');
+      return;
+    }
+
+    try {
+      const obrasFolder = await findOrCreateDriveFolder(root.id, 'OBRAS');
+      const picked = await openFolderPicker(obrasFolder.id);
+      if (!picked) return;
+
+      toast('Preparando carpetas en Drive…');
+      const planos = await findOrCreateDriveFolder(picked.id, `PLANOS DE OBRA DE ${picked.name}`);
+      const firmados = await findOrCreateDriveFolder(picked.id, 'PROTOCOLOS FIRMADOS');
+
+      await updateObra(obraId, {
+        driveObraFolderId: picked.id,
+        driveObraFolderName: picked.name,
+        planosDriveFolderId: planos.id,
+        planosDriveFolderName: planos.name,
+        signedDriveFolderId: firmados.id,
+        signedDriveFolderName: firmados.name,
+      });
+      toast(`Obra enlazada con "${picked.name}" en Drive.`);
+      renderProtocolObraView(container, obraId);
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo conectar con Google Drive.');
+    }
+  });
 
   container.querySelectorAll('.protocol-tile').forEach((tile) => {
     tile.addEventListener('click', () => navigate(`/protocolos/instancia/${tile.dataset.instanceId}`));

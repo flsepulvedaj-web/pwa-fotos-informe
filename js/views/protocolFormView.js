@@ -5,11 +5,13 @@ import {
   getProtocolPhotosByInstance,
   addProtocolPhoto,
   deleteProtocolPhoto,
+  getObra,
 } from '../db.js';
 import { CONTROL_STATUS, SIGNATURE_ROLES, GATING_ROLE } from '../protocolTemplates.js';
 import { navigate } from '../router.js';
 import { escapeHTML, formatDate, downscaleImageBlob, confirmDialog, toast } from '../utils.js';
 import { openSignaturePad } from '../signaturePad.js';
+import { listDriveFiles, downloadDriveFile } from '../googleDrive.js';
 
 const HEADER_FIELDS = [
   { key: 'obra', label: 'Obra' },
@@ -44,7 +46,7 @@ export async function renderProtocolFormView(container, instanceId) {
     navigate('/protocolos');
     return;
   }
-  const photos = await getProtocolPhotosByInstance(instanceId);
+  const [photos, obra] = await Promise.all([getProtocolPhotosByInstance(instanceId), getObra(instance.obraId)]);
   const readOnly = instance.status === 'emitted';
   const gatingSigned = !!instance.signatures?.[GATING_ROLE]?.signatureBlob;
 
@@ -70,6 +72,21 @@ export async function renderProtocolFormView(container, instanceId) {
       <section class="protocol-observaciones">
         <label for="observaciones">Observaciones</label>
         <textarea id="observaciones" placeholder="Notas adicionales…" ${readOnly ? 'disabled' : ''}>${escapeHTML(instance.observaciones || '')}</textarea>
+      </section>
+
+      <section class="protocol-plano">
+        <h3>Planimetría</h3>
+        ${instance.plano ? `
+          <div class="protocol-plano-preview">
+            <img src="${trackURL(URL.createObjectURL(instance.plano.blob))}" alt="Plano" />
+          </div>
+          <div class="protocol-plano-name">${escapeHTML(instance.plano.driveFileName)}</div>
+          ${readOnly ? '' : '<button type="button" class="btn btn-secondary" id="btn-change-plano">Cambiar plano</button>'}
+        ` : readOnly ? `
+          <p class="protocol-plano-hint">Sin plano.</p>
+        ` : `
+          <button type="button" class="btn btn-secondary" id="btn-choose-plano">🗺️ Elegir plano</button>
+        `}
       </section>
 
       <section class="protocol-photos">
@@ -145,6 +162,45 @@ export async function renderProtocolFormView(container, instanceId) {
     }, 500);
   });
 
+  // Planimetría: se elige desde la carpeta de planos de la obra en Drive
+  // (Pancho los convierte de CAD a imagen antes de subirlos), se descarga y
+  // se cachea localmente — offline-first, como el resto de la app.
+  const choosePlano = async () => {
+    if (!obra?.planosDriveFolderId) {
+      toast('Primero vincula esta obra con Drive (☁️ arriba en la pantalla de la obra) para poder elegir un plano.');
+      return;
+    }
+    let files;
+    try {
+      toast('Buscando planos…');
+      files = await listDriveFiles(obra.planosDriveFolderId);
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo conectar con Google Drive.');
+      return;
+    }
+    if (!files.length) {
+      toast(`No hay imágenes en "${obra.planosDriveFolderName}" todavía.`);
+      return;
+    }
+    const picked = await planoPickerDialog(files);
+    if (!picked) return;
+
+    try {
+      toast('Descargando plano…');
+      const blob = await downloadDriveFile(picked.id);
+      instance = await updateProtocolInstance(instanceId, {
+        plano: { driveFileId: picked.id, driveFileName: picked.name, blob },
+      });
+      renderProtocolFormView(container, instanceId);
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo descargar el plano.');
+    }
+  };
+  container.querySelector('#btn-choose-plano')?.addEventListener('click', choosePlano);
+  container.querySelector('#btn-change-plano')?.addEventListener('click', choosePlano);
+
   // Fotografías: mismo mecanismo que "elegir de la galería" en Proyectos —
   // en el celular el propio selector del sistema ofrece cámara o galería,
   // no hace falta reconstruir toda la pantalla de cámara en vivo para
@@ -219,6 +275,41 @@ export async function renderProtocolFormView(container, instanceId) {
 
   container.querySelector('#btn-emit')?.addEventListener('click', () => {
     toast('La emisión del PDF y la subida a Drive vienen en la próxima etapa.');
+  });
+}
+
+/** Lista de imágenes de la carpeta de planos de la obra. Devuelve {id,name} o null. */
+function planoPickerDialog(files) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal template-picker" role="dialog" aria-modal="true">
+        <h2>Elegir plano</h2>
+        <div class="folder-picker-list">
+          ${files.map((f) => `
+            <button class="folder-picker-item" data-file-id="${f.id}" data-file-name="${escapeHTML(f.name)}">
+              🖼️ ${escapeHTML(f.name)}
+            </button>
+          `).join('')}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-action="cancel">Cancelar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    function cleanup(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(null);
+      if (e.target.closest('[data-action="cancel"]')) cleanup(null);
+      const item = e.target.closest('.folder-picker-item');
+      if (item) cleanup({ id: item.dataset.fileId, name: item.dataset.fileName });
+    });
   });
 }
 

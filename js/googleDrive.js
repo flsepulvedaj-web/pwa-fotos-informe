@@ -11,6 +11,10 @@ const API_KEY = 'AIzaSyBPOsLlvyl1bPtQxURmf4V-C7pUvLxZl04';
 const SCOPE = 'https://www.googleapis.com/auth/drive email';
 const TOKEN_STORAGE_KEY = 'gdrive-token-v3';
 const ROOT_FOLDER_KEY = 'gdrive-root-folder';
+// Raíz de Drive del módulo Protocolos (carpeta "PROTOCOLOS" que Pancho armó
+// a mano) — completamente aparte de la raíz de fotos de arriba, sin valor
+// por defecto: hay que vincularla una vez desde los ajustes de Protocolos.
+const PROTOCOLS_ROOT_FOLDER_KEY = 'gdrive-protocolos-root-folder';
 
 // Carpeta raíz por defecto ("Fotos Proyectos" de Pancho): así cualquier
 // compañero que abra la app en su propio teléfono queda restringido a esta
@@ -39,6 +43,25 @@ export function setDriveRootFolder(folder) {
 
 export function clearDriveRootFolder() {
   localStorage.removeItem(ROOT_FOLDER_KEY);
+}
+
+/** Igual que las tres funciones de arriba, pero para la raíz de Protocolos. */
+export function getProtocolsRootFolder() {
+  try {
+    const raw = localStorage.getItem(PROTOCOLS_ROOT_FOLDER_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // ignorar datos corruptos
+  }
+  return null;
+}
+
+export function setProtocolsRootFolder(folder) {
+  localStorage.setItem(PROTOCOLS_ROOT_FOLDER_KEY, JSON.stringify(folder));
+}
+
+export function clearProtocolsRootFolder() {
+  localStorage.removeItem(PROTOCOLS_ROOT_FOLDER_KEY);
 }
 
 let tokenClient = null;
@@ -243,6 +266,65 @@ export async function createDriveFolder(parentId, name) {
     throw new Error(`Error creando carpeta en Drive (${res.status}): ${text}`);
   }
   return res.json();
+}
+
+/**
+ * Lista los archivos de imagen dentro de una carpeta de Drive (no
+ * subcarpetas). Se usa para el selector de planos: Pancho convierte sus
+ * planos de CAD a PNG/JPEG y los deja en la carpeta "Planos de obra" de
+ * cada obra; acá se listan para elegir uno.
+ */
+export async function listDriveFiles(parentId) {
+  const token = await signIn();
+  const q = encodeURIComponent(`'${parentId}' in parents and mimeType contains 'image/' and trashed=false`);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&spaces=drive`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error listando archivos de Drive (${res.status}): ${text}`);
+  }
+  const data = await res.json();
+  return data.files || [];
+}
+
+/**
+ * Descarga el contenido de un archivo de Drive como Blob (para cachear
+ * localmente el plano elegido, offline-first como el resto de la app).
+ */
+export async function downloadDriveFile(fileId) {
+  const token = await signIn();
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error descargando archivo de Drive (${res.status}): ${text}`);
+  }
+  return res.blob();
+}
+
+/**
+ * Busca una subcarpeta por nombre exacto dentro de una carpeta de Drive; si
+ * no existe, la crea. Se usa para armar el árbol OBRAS/<obra>/PLANOS.../
+ * PROTOCOLOS FIRMADOS sin duplicar carpetas si ya existían (ej. porque
+ * Pancho las armó a mano de antemano).
+ */
+export async function findOrCreateDriveFolder(parentId, name) {
+  const token = await signIn();
+  const q = encodeURIComponent(
+    `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false and name='${name.replace(/'/g, "\\'")}'`
+  );
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1&spaces=drive`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (res.ok) {
+    const data = await res.json();
+    if (data.files && data.files.length) return data.files[0];
+  }
+  return createDriveFolder(parentId, name);
 }
 
 /**

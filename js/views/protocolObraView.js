@@ -2,7 +2,7 @@ import { getObra, updateObra, getInstancesByObra, createProtocolInstance, delete
 import { PROTOCOL_TEMPLATES } from '../protocolTemplates.js';
 import { navigate } from '../router.js';
 import { escapeHTML, formatDate, confirmDialog, toast } from '../utils.js';
-import { getProtocolsRootFolder, findOrCreateDriveFolder, openFolderPicker } from '../googleDrive.js';
+import { signIn, getProtocolsRootFolder, findOrCreateDriveFolder, openFolderPicker } from '../googleDrive.js';
 
 const STATUS_LABEL = { draft: 'Borrador', emitted: 'Emitido' };
 
@@ -67,9 +67,20 @@ export async function renderProtocolObraView(container, obraId) {
       return;
     }
 
+    // Iniciar sesión primero, siempre — así este botón también sirve para
+    // refrescar una sesión de Google vencida, en vez de quedar bloqueado
+    // esperando el ⚙️ (que a su vez solo aparece con sesión ya activa).
+    try {
+      await signIn();
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo iniciar sesión con Google.');
+      return;
+    }
+
     const root = getProtocolsRootFolder();
     if (!root) {
-      toast('Primero hay que vincular la carpeta "PROTOCOLOS" desde los ajustes (⚙️ en la pantalla anterior, solo el admin la ve).');
+      toast('Ya iniciaste sesión. Ahora, si eres el admin, entra a Protocolos y usa el ⚙️ para vincular la carpeta "PROTOCOLOS" — recién ahí se puede vincular una obra.');
       return;
     }
 

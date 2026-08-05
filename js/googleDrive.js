@@ -16,11 +16,13 @@ const ROOT_FOLDER_KEY = 'gdrive-root-folder';
 // por defecto: hay que vincularla una vez desde los ajustes de Protocolos.
 const PROTOCOLS_ROOT_FOLDER_KEY = 'gdrive-protocolos-root-folder';
 
-// Carpeta raíz por defecto ("Fotos Proyectos" de Pancho): así cualquier
-// compañero que abra la app en su propio teléfono queda restringido a esta
-// carpeta desde el primer uso, sin tener que configurar nada — nadie más
-// que el admin puede cambiarla (ver getDriveRootFolder).
-const DEFAULT_ROOT_FOLDER = { id: '1L0EDZ6eHzqOSxLnOqV2Wd5p8rp6hGsjf', name: 'Fotos Proyectos' };
+// Carpeta raíz por defecto ("Proyectos LEN", antes "Fotos Proyectos" — el
+// nombre se puede cambiar en Drive libremente porque Drive identifica la
+// carpeta por su id, no por el nombre; este `name` es solo para mostrar):
+// así cualquier compañero que abra la app en su propio teléfono queda
+// restringido a esta carpeta desde el primer uso, sin tener que configurar
+// nada — nadie más que el admin puede cambiarla (ver getDriveRootFolder).
+const DEFAULT_ROOT_FOLDER = { id: '1L0EDZ6eHzqOSxLnOqV2Wd5p8rp6hGsjf', name: 'Proyectos LEN' };
 
 /**
  * Carpeta raíz de Drive a la que queda restringido el selector (para no

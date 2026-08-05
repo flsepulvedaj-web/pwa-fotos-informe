@@ -1,13 +1,14 @@
 import {
   getProtocolInstance,
   updateProtocolInstance,
+  deleteProtocolInstance,
   getProtocolPhotosByInstance,
   addProtocolPhoto,
   deleteProtocolPhoto,
 } from '../db.js';
 import { CONTROL_STATUS, SIGNATURE_ROLES, GATING_ROLE } from '../protocolTemplates.js';
 import { navigate } from '../router.js';
-import { escapeHTML, formatDate, downscaleImageBlob, toast } from '../utils.js';
+import { escapeHTML, formatDate, downscaleImageBlob, confirmDialog, toast } from '../utils.js';
 import { openSignaturePad } from '../signaturePad.js';
 
 const HEADER_FIELDS = [
@@ -52,6 +53,7 @@ export async function renderProtocolFormView(container, instanceId) {
       <button class="icon-btn" id="btn-back" title="Volver">←</button>
       <span class="header-title">${escapeHTML(instance.templateTitle)}</span>
       <span class="protocol-status-pill protocol-status-${instance.status}">${readOnly ? 'Emitido' : 'Borrador'}</span>
+      <button class="icon-btn" id="btn-delete-instance" title="Eliminar este protocolo">🗑️</button>
     </header>
     <main class="view-content protocol-form">
       <section class="protocol-form-fields">
@@ -100,6 +102,14 @@ export async function renderProtocolFormView(container, instanceId) {
   `;
 
   container.querySelector('#btn-back').addEventListener('click', () => navigate(`/protocolos/obra/${instance.obraId}`));
+
+  container.querySelector('#btn-delete-instance').addEventListener('click', async () => {
+    const ok = await confirmDialog('¿Eliminar este protocolo? Se borran también sus fotos y firmas. Esta acción no se puede deshacer.');
+    if (!ok) return;
+    await deleteProtocolInstance(instanceId);
+    toast('Protocolo eliminado.');
+    navigate(`/protocolos/obra/${instance.obraId}`);
+  });
 
   if (readOnly) return; // solo lectura, nada más que conectar
 

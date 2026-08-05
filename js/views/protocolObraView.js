@@ -1,7 +1,7 @@
-import { getObra, getInstancesByObra, createProtocolInstance } from '../db.js';
+import { getObra, getInstancesByObra, createProtocolInstance, deleteProtocolInstance } from '../db.js';
 import { PROTOCOL_TEMPLATES } from '../protocolTemplates.js';
 import { navigate } from '../router.js';
-import { escapeHTML, formatDate } from '../utils.js';
+import { escapeHTML, formatDate, confirmDialog, toast } from '../utils.js';
 
 const STATUS_LABEL = { draft: 'Borrador', emitted: 'Emitido' };
 
@@ -25,13 +25,16 @@ export async function renderProtocolObraView(container, obraId) {
       ${instances.length ? `
         <section class="protocol-list">
           ${instances.map((i) => `
-            <button class="protocol-tile" data-instance-id="${i.id}">
-              <span class="protocol-tile-title">${escapeHTML(i.templateTitle)}</span>
-              <span class="protocol-tile-meta">
-                <span class="protocol-status protocol-status-${i.status}">${STATUS_LABEL[i.status]}</span>
-                ${formatDate(i.updatedAt)}
-              </span>
-            </button>
+            <div class="protocol-tile-wrap">
+              <button class="protocol-tile" data-instance-id="${i.id}">
+                <span class="protocol-tile-title">${escapeHTML(i.templateTitle)}</span>
+                <span class="protocol-tile-meta">
+                  <span class="protocol-status protocol-status-${i.status}">${STATUS_LABEL[i.status]}</span>
+                  ${formatDate(i.updatedAt)}
+                </span>
+              </button>
+              <button class="protocol-delete-btn" data-delete-instance-id="${i.id}" title="Eliminar protocolo">🗑️</button>
+            </div>
           `).join('')}
         </section>
       ` : `
@@ -50,6 +53,17 @@ export async function renderProtocolObraView(container, obraId) {
 
   container.querySelectorAll('.protocol-tile').forEach((tile) => {
     tile.addEventListener('click', () => navigate(`/protocolos/instancia/${tile.dataset.instanceId}`));
+  });
+
+  container.querySelectorAll('.protocol-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await confirmDialog('¿Eliminar este protocolo? Se borran también sus fotos y firmas. Esta acción no se puede deshacer.');
+      if (!ok) return;
+      await deleteProtocolInstance(btn.dataset.deleteInstanceId);
+      toast('Protocolo eliminado.');
+      renderProtocolObraView(container, obraId);
+    });
   });
 
   container.querySelector('#btn-new-protocol').addEventListener('click', async () => {

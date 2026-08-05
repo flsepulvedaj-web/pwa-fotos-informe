@@ -1,6 +1,6 @@
-import { getAllObras, createObra } from '../db.js';
+import { getAllObras, createObra, deleteObra } from '../db.js';
 import { navigate } from '../router.js';
-import { promptDialog, escapeHTML } from '../utils.js';
+import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
 
 /**
  * Pantalla de inicio del módulo Protocolos: lista de obras. Cada obra
@@ -20,10 +20,13 @@ export async function renderProtocolHomeView(container) {
       ${obras.length ? `
         <section class="obra-grid">
           ${obras.map((o) => `
-            <button class="obra-tile" data-obra-id="${o.id}">
-              <span class="obra-icon">🏗️</span>
-              <span class="obra-name">${escapeHTML(o.name)}</span>
-            </button>
+            <div class="obra-tile-wrap">
+              <button class="obra-tile" data-obra-id="${o.id}">
+                <span class="obra-icon">🏗️</span>
+                <span class="obra-name">${escapeHTML(o.name)}</span>
+              </button>
+              <button class="obra-delete-btn" data-delete-obra-id="${o.id}" title="Eliminar obra">🗑️</button>
+            </div>
           `).join('')}
         </section>
       ` : `
@@ -43,6 +46,17 @@ export async function renderProtocolHomeView(container) {
 
   container.querySelectorAll('.obra-tile').forEach((tile) => {
     tile.addEventListener('click', () => navigate(`/protocolos/obra/${tile.dataset.obraId}`));
+  });
+
+  container.querySelectorAll('.obra-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await confirmDialog('¿Eliminar esta obra? Se borran también todos sus protocolos, fotos y firmas. Esta acción no se puede deshacer.');
+      if (!ok) return;
+      await deleteObra(btn.dataset.deleteObraId);
+      toast('Obra eliminada.');
+      renderProtocolHomeView(container);
+    });
   });
 
   container.querySelector('#btn-new-obra').addEventListener('click', async () => {

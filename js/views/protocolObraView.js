@@ -90,7 +90,13 @@ export async function renderProtocolObraView(container, obraId) {
       if (!picked) return;
 
       toast('Preparando carpetas en Drive…');
-      const planos = await findOrCreateDriveFolder(picked.id, `PLANOS DE OBRA DE ${picked.name}`);
+      // Pancho nombra sus carpetas de obra "OBRA DE <sitio>" y sus planos
+      // "PLANOS DE OBRA DE <sitio>" — si se pega "PLANOS DE OBRA DE " +
+      // nombre completo de la carpeta elegida, queda duplicado ("...DE OBRA
+      // DE OBRA DE PRUEBA"). Se saca el prefijo "OBRA DE " si ya viene en el
+      // nombre, para armar el mismo nombre que él ya usa a mano.
+      const siteName = picked.name.replace(/^OBRA\s+DE\s+/i, '').trim() || picked.name;
+      const planos = await findOrCreateDriveFolder(picked.id, `PLANOS DE OBRA DE ${siteName}`);
       const firmados = await findOrCreateDriveFolder(picked.id, 'PROTOCOLOS FIRMADOS');
 
       await updateObra(obraId, {

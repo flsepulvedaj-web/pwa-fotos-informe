@@ -1377,3 +1377,154 @@ button {
   font-family: inherit;
   resize: vertical;
 }
+
+.protocol-form h3 {
+  font-size: 15px;
+  margin: 0 0 10px;
+  padding: 0 12px;
+}
+
+/* ---------- Protocolos: fotografías ---------- */
+
+.protocol-photos {
+  padding: 12px;
+}
+
+.protocol-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.protocol-photo-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--color-border);
+}
+
+.protocol-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.protocol-photo-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ---------- Protocolos: firmas ---------- */
+
+.protocol-signatures {
+  padding: 4px 12px 24px;
+}
+
+.signature-row {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.signature-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.signature-role-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.signature-required-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  background: var(--color-accent);
+  color: #1c2b4a;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.signature-name-input {
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+}
+
+.signature-preview {
+  width: 100%;
+  max-width: 220px;
+  height: 90px;
+  object-fit: contain;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.signature-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.btn-emit {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 4px 12px 24px;
+}
+
+.btn-emit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---------- Firma: pantalla de dibujo ---------- */
+
+.signature-modal {
+  max-width: 480px;
+}
+
+.signature-canvas-wrap {
+  width: 100%;
+  height: 220px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+#signature-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.signature-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0 0 4px;
+}

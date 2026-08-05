@@ -6,7 +6,9 @@ const GRID_COLS = 2;
 const GRID_ROWS = 4;
 const BANNER_COLOR = [226, 107, 10]; // naranjo del formato "Fotografías Desarrollo de Obras"
 
-function getImageDimensions(dataUrl) {
+// Exportadas para reusarlas en protocolPdfExport.js — no vale la pena un
+// archivo aparte solo por estas dos funciones.
+export function getImageDimensions(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
@@ -15,7 +17,7 @@ function getImageDimensions(dataUrl) {
   });
 }
 
-function drawContainedImage(doc, dataUrl, dims, boxX, boxY, boxW, boxH) {
+export function drawContainedImage(doc, dataUrl, dims, boxX, boxY, boxW, boxH, format = 'JPEG') {
   let w = boxW;
   let h = (dims.height / dims.width) * w;
   if (h > boxH) {
@@ -24,7 +26,7 @@ function drawContainedImage(doc, dataUrl, dims, boxX, boxY, boxW, boxH) {
   }
   const x = boxX + (boxW - w) / 2;
   const y = boxY + (boxH - h) / 2;
-  doc.addImage(dataUrl, 'JPEG', x, y, w, h, undefined, 'MEDIUM');
+  doc.addImage(dataUrl, format, x, y, w, h, undefined, 'MEDIUM');
 }
 
 function drawHeader(doc, { obra, reportNumber, period }, pageW, margin) {

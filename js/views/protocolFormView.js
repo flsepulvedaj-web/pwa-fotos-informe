@@ -12,7 +12,9 @@ import { CONTROL_STATUS, SIGNATURE_ROLES, GATING_ROLE } from '../protocolTemplat
 import { navigate } from '../router.js';
 import { escapeHTML, formatDate, downscaleImageBlob, confirmDialog, toast } from '../utils.js';
 import { openSignaturePad } from '../signaturePad.js';
-import { listDriveFiles, downloadDriveFile, openFolderPicker } from '../googleDrive.js';
+import { listDriveFiles, downloadDriveFile, openFolderPicker, uploadFile } from '../googleDrive.js';
+import { buildProtocolPDF } from '../protocolPdfExport.js';
+import { sanitizeFilename } from '../pdfExport.js';
 
 const HEADER_FIELDS = [
   { key: 'obra', label: 'Obra' },
@@ -310,8 +312,75 @@ export async function renderProtocolFormView(container, instanceId) {
     });
   });
 
-  container.querySelector('#btn-emit')?.addEventListener('click', () => {
-    toast('La emisión del PDF y la subida a Drive vienen en la próxima etapa.');
+  // Emitir: arma el PDF y lo sube a Drive. La primera vez pregunta en qué
+  // carpeta guardar los protocolos firmados de esta obra (mismo patrón que
+  // el selector de planos) y de ahí en adelante la recuerda.
+  container.querySelector('#btn-emit')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+    btn.disabled = true;
+
+    try {
+      if (!obra?.driveObraFolderId) {
+        toast('Esta obra no está vinculada con Drive. Vincúlala primero (arriba en la pantalla de la obra).');
+        btn.disabled = false;
+        return;
+      }
+
+      let signedFolderId = obra.signedDriveFolderId;
+      if (!signedFolderId) {
+        toast('Elige en qué carpeta quieres guardar los protocolos firmados de esta obra…');
+        let picked;
+        try {
+          picked = await openFolderPicker(obra.driveObraFolderId);
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google Drive.');
+          btn.disabled = false;
+          return;
+        }
+        if (!picked) {
+          btn.disabled = false;
+          return;
+        }
+        signedFolderId = picked.id;
+        await updateObra(obra.id, { signedDriveFolderId: picked.id, signedDriveFolderName: picked.name });
+        obra.signedDriveFolderId = picked.id;
+        obra.signedDriveFolderName = picked.name;
+      }
+
+      btn.textContent = 'Generando PDF…';
+      const pdfBlob = await buildProtocolPDF(
+        {
+          templateTitle: instance.templateTitle,
+          header: instance.header,
+          controlPoints: instance.controlPoints,
+          observaciones: instance.observaciones,
+          plano: instance.plano,
+          photos,
+          signatures: instance.signatures,
+        },
+        (p, total) => { btn.textContent = `Generando PDF (${p}/${total})…`; }
+      );
+
+      btn.textContent = 'Subiendo a Drive…';
+      const filename = `${sanitizeFilename(instance.templateTitle)}-${sanitizeFilename(obra.name)}.pdf`;
+      const uploaded = await uploadFile(signedFolderId, pdfBlob, filename);
+
+      instance = await updateProtocolInstance(instanceId, {
+        status: 'emitted',
+        emittedAt: Date.now(),
+        pdfDriveFileId: uploaded.id,
+        pdfDriveFileName: filename,
+      });
+      toast(`Protocolo emitido y guardado en "${obra.signedDriveFolderName}".`);
+      renderProtocolFormView(container, instanceId);
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo emitir el protocolo (quedó como borrador). Puedes reintentar — no hace falta volver a firmar.');
+      btn.disabled = false;
+      btn.textContent = 'Emitir protocolo';
+    }
   });
 }
 

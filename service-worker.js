@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v32';
+const CACHE_VERSION = 'v33';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './js/router.js',
   './js/utils.js',
   './js/pdfExport.js',
+  './js/protocolPdfExport.js',
   './js/signaturePad.js',
   './js/reportFormats.js',
   './js/protocolTemplates.js',

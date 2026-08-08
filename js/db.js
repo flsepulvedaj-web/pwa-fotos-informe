@@ -156,7 +156,12 @@ export async function addPhoto({ folderId, blob, title = '', note = '', syncStat
 export async function getPendingUploads() {
   const store = await tx('photos', 'readonly');
   const all = await wrap(store.getAll());
-  return all.filter((p) => p.syncStatus === 'pending').sort((a, b) => a.createdAt - b.createdAt);
+  // 'error' se reintenta igual que 'pending' — antes una foto que fallaba
+  // una vez (ej. porque la sesión de Google venció a mitad de la subida)
+  // quedaba marcada como error para siempre, sin ningún reintento automático.
+  return all
+    .filter((p) => p.syncStatus === 'pending' || p.syncStatus === 'error')
+    .sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function getPhoto(id) {

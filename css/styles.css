@@ -164,6 +164,27 @@ button {
   padding: 0 24px;
 }
 
+.sync-retry-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #fff4e0;
+  border: 1px solid #f2a93b;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #7a4a00;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sync-retry-banner {
+    background: #3a2f14;
+    color: #f2c778;
+  }
+}
+
 /* ---------- Folder grid ---------- */
 
 .folder-grid {

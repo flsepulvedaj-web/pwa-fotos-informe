@@ -23,6 +23,7 @@ import {
   setDriveRootFolder,
   clearDriveRootFolder,
   getSignedInEmail,
+  signIn,
 } from '../googleDrive.js';
 import { trySync, syncFoldersFromDrive, createMatchingDriveFolder } from '../sync.js';
 
@@ -90,6 +91,13 @@ export async function renderFoldersView(container, folderId) {
         </section>
       ` : ''}
 
+      ${photos.some((p) => p.syncStatus === 'error') ? `
+        <div class="sync-retry-banner">
+          <span>⚠️ ${photos.filter((p) => p.syncStatus === 'error').length} foto(s) no se subieron a Drive todavía.</span>
+          <button type="button" class="btn btn-secondary" id="btn-retry-sync">Reintentar</button>
+        </div>
+      ` : ''}
+
       ${photos.length ? `
         <section class="photo-grid" id="photo-grid"></section>
       ` : `
@@ -134,6 +142,27 @@ export async function renderFoldersView(container, folderId) {
   renderBreadcrumbs(path);
   if (photos.length) renderPhotoGrid(photos);
   trySync();
+
+  // Reintentar subida: acá SÍ se puede pedir sesión de Google si venció —
+  // es un clic directo del usuario, así que el navegador deja abrir la
+  // ventanita (trySync() solo, corriendo en segundo plano, no puede).
+  container.querySelector('#btn-retry-sync')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Conectando…';
+    try {
+      await signIn();
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo conectar con Google.');
+      btn.disabled = false;
+      btn.textContent = 'Reintentar';
+      return;
+    }
+    btn.textContent = 'Subiendo…';
+    await trySync();
+    renderFoldersView(container, folderId);
+  });
   if (currentFolder.driveFolderId) {
     syncFoldersFromDrive(currentFolder).then(({ foundNew, error }) => {
       if (foundNew) renderFoldersView(container, folderId);

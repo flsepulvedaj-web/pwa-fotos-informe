@@ -176,6 +176,17 @@ export async function getPhotosByFolder(folderId) {
   return results.sort((a, b) => a.createdAt - b.createdAt);
 }
 
+/**
+ * Solo el número de fotos de una carpeta (sin traer las fotos completas —
+ * más liviano para pintar el "tiene fotos" de varias carpetas a la vez en
+ * la grilla, ej. las 50 casas de un loteo).
+ */
+export async function getPhotoCountByFolder(folderId) {
+  const store = await tx('photos', 'readonly');
+  const index = store.index('by_folderId');
+  return wrap(index.count(folderId));
+}
+
 export async function updatePhoto(id, changes) {
   const store = await tx('photos', 'readwrite');
   const photo = await wrap(store.get(id));

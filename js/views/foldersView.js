@@ -8,6 +8,7 @@ import {
   deleteFolderRecursive,
   getPhotosByFolder,
   getPhotosByIds,
+  getPhotoCountByFolder,
   getAllFolders,
   getPinnedFolders,
   movePhotos,
@@ -56,6 +57,12 @@ export async function renderFoldersView(container, folderId) {
   // Las carpetas fijadas ya tienen su acceso directo permanente (el ícono de
   // libro); se ocultan de la lista normal para no verlas duplicadas.
   const visibleSubfolders = subfolders.filter((f) => !f.pinned);
+  // Para saber de un vistazo qué carpetas ya tienen fotos adentro (ej. en un
+  // loteo con muchas casas, cuáles ya se visitaron) — solo el número, no las
+  // fotos completas, para que no sea lento con muchas carpetas.
+  const subfolderPhotoCounts = Object.fromEntries(
+    await Promise.all(visibleSubfolders.map(async (f) => [f.id, await getPhotoCountByFolder(f.id)]))
+  );
 
   const currentFolder = path.length
     ? path[path.length - 1]
@@ -83,6 +90,7 @@ export async function renderFoldersView(container, folderId) {
             <button class="folder-tile" data-folder-id="${f.id}">
               <span class="folder-icon">📁</span>
               ${f.driveFolderId ? '<span class="folder-drive-badge" title="Enlazada con Google Drive">☁️</span>' : ''}
+              ${subfolderPhotoCounts[f.id] ? `<span class="folder-photo-badge" title="${subfolderPhotoCounts[f.id]} foto(s)">✓ ${subfolderPhotoCounts[f.id]}</span>` : ''}
               <span class="folder-name">${escapeHTML(f.name)}</span>
               <span class="folder-menu" data-menu-folder-id="${f.id}">⋮</span>
               <span class="folder-check">✓</span>

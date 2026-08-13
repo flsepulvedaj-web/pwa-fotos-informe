@@ -1,5 +1,5 @@
-import { getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto } from './db.js';
-import { uploadFile, listDriveFolders, createDriveFolder } from './googleDrive.js';
+import { getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto } from './db.js';
+import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile } from './googleDrive.js';
 
 let syncing = false;
 const listeners = new Set();
@@ -59,12 +59,13 @@ export async function trySync() {
  * persona) y las crea localmente. Devuelve true si encontró alguna nueva.
  */
 export async function syncFoldersFromDrive(folder) {
-  if (!folder?.driveFolderId || !navigator.onLine) return { foundNew: false, error: null };
+  if (!folder?.driveFolderId || !navigator.onLine) return { foundNew: false, orphanedCount: 0, error: null };
   try {
     const [driveChildren, localChildren] = await Promise.all([
       listDriveFolders(folder.driveFolderId),
       getChildFolders(folder.id),
     ]);
+    const driveIds = new Set(driveChildren.map((f) => f.id));
     const knownDriveIds = new Set(localChildren.map((f) => f.driveFolderId).filter(Boolean));
     let foundNew = false;
     for (const dc of driveChildren) {
@@ -73,10 +74,61 @@ export async function syncFoldersFromDrive(folder) {
       await updateFolder(created.id, { driveFolderId: dc.id, driveFolderName: dc.name });
       foundNew = true;
     }
-    return { foundNew, error: null, driveChildrenCount: driveChildren.length };
+
+    // Carpetas que se borraron directo en Drive (Pancho suele borrar desde
+    // ahí, no desde la app): nunca se borran solas acá — podrían tener
+    // fotos que todavía no se alcanzaron a subir. Solo se marcan para que
+    // la carpeta muestre un aviso y él decida si las elimina también en la
+    // app (ver folder-orphan-badge en foldersView.js).
+    let orphanedCount = 0;
+    for (const lc of localChildren) {
+      if (!lc.driveFolderId) continue;
+      const stillExists = driveIds.has(lc.driveFolderId);
+      if (!stillExists && !lc.driveOrphaned) {
+        await updateFolder(lc.id, { driveOrphaned: true });
+        orphanedCount++;
+      } else if (stillExists && lc.driveOrphaned) {
+        await updateFolder(lc.id, { driveOrphaned: false });
+      }
+    }
+
+    return { foundNew, orphanedCount, error: null, driveChildrenCount: driveChildren.length };
   } catch (err) {
     console.error('Error sincronizando carpetas desde Drive:', err);
-    return { foundNew: false, error: err.message || String(err) };
+    return { foundNew: false, orphanedCount: 0, error: err.message || String(err) };
+  }
+}
+
+/**
+ * Trae a la app las fotos que se hayan subido directo en Drive, sin pasar
+ * por la app (ej. copiadas a mano desde el computador). Quedan marcadas
+ * 'synced' de entrada, porque ya están en Drive — así no se vuelven a
+ * subir solas. Se guarda el driveFileId de cada una para no descargarla de
+ * nuevo la próxima vez.
+ */
+export async function syncPhotosFromDrive(folder) {
+  if (!folder?.driveFolderId || !navigator.onLine) return { downloaded: 0, error: null };
+  try {
+    const [driveFiles, localPhotos] = await Promise.all([
+      listDriveFiles(folder.driveFolderId),
+      getPhotosByFolder(folder.id),
+    ]);
+    const knownDriveFileIds = new Set(localPhotos.map((p) => p.driveFileId).filter(Boolean));
+    let downloaded = 0;
+    for (const file of driveFiles) {
+      if (knownDriveFileIds.has(file.id)) continue;
+      try {
+        const blob = await downloadDriveFile(file.id);
+        await addPhoto({ folderId: folder.id, blob, title: '', note: '', syncStatus: 'synced', driveFileId: file.id });
+        downloaded++;
+      } catch (err) {
+        console.error(`Error descargando "${file.name}" de Drive:`, err);
+      }
+    }
+    return { downloaded, error: null };
+  } catch (err) {
+    console.error('Error trayendo fotos desde Drive:', err);
+    return { downloaded: 0, error: err.message || String(err) };
   }
 }
 

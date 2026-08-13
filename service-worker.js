@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v36';
+const CACHE_VERSION = 'v38';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -15,6 +15,7 @@ const APP_SHELL = [
   './js/signaturePad.js',
   './js/reportFormats.js',
   './js/protocolTemplates.js',
+  './js/aiAvance.js',
   './js/googleDrive.js',
   './js/sync.js',
   './js/views/homeView.js',

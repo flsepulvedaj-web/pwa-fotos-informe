@@ -138,7 +138,7 @@ export async function getFolderPath(id) {
 
 // ---------- Photos ----------
 
-export async function addPhoto({ folderId, blob, title = '', note = '', syncStatus = null }) {
+export async function addPhoto({ folderId, blob, title = '', note = '', syncStatus = null, driveFileId = null }) {
   const store = await tx('photos', 'readwrite');
   const photo = {
     id: uuid(),
@@ -148,6 +148,10 @@ export async function addPhoto({ folderId, blob, title = '', note = '', syncStat
     note,
     createdAt: Date.now(),
     syncStatus,
+    // Id del archivo en Drive cuando la foto llegó DESDE Drive (alguien la
+    // subió directo ahí, sin pasar por la app) — sirve para no volver a
+    // descargarla en cada sincronización ni tampoco volver a subirla.
+    driveFileId,
   };
   await wrap(store.add(photo));
   return photo;

@@ -237,6 +237,15 @@ button {
   font-size: 13px;
 }
 
+.folder-orphan-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 15px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
 .folder-photo-badge {
   position: absolute;
   top: 6px;
@@ -614,6 +623,52 @@ button {
 
 .folder-picker-item:first-child {
   border-top: none;
+}
+
+/* ---------- IA: avance por casa/depto ---------- */
+
+.ai-avance-loading {
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-avance-spinner-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: #fff;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.ai-avance-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  animation: ai-avance-spin 0.8s linear infinite;
+}
+
+@keyframes ai-avance-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ai-avance-reasoning {
+  margin: -8px 0 14px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.ai-avance-substitutions {
+  margin: -6px 0 14px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--color-text-muted);
 }
 
 /* ---------- Toast ---------- */

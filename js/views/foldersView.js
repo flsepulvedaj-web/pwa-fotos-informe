@@ -77,6 +77,15 @@ export async function renderFoldersView(container, folderId) {
   const pendingPhotosCount = photos.filter((p) => p.syncStatus === 'pending').length;
   const needsReconnect = pendingPhotosCount > 0 && !isSignedIn();
   const retryBannerCount = errorPhotosCount + (needsReconnect ? pendingPhotosCount : 0);
+  // Carpetas borradas/nuevas en Drive tampoco se detectan sin sesión vigente
+  // — y a diferencia de las fotos pendientes, eso no deja ningún rastro
+  // visible en esta carpeta si no tiene fotos propias. Por eso este aviso es
+  // aparte: se muestra igual aunque no haya ninguna foto pendiente.
+  const driveDisconnected = !!currentFolder.driveFolderId && !isSignedIn();
+  const showSyncBanner = retryBannerCount > 0 || driveDisconnected;
+  const syncBannerMessage = retryBannerCount > 0
+    ? `⚠️ ${retryBannerCount} foto(s) no se ${retryBannerCount === 1 ? 'ha' : 'han'} subido a Drive todavía${needsReconnect ? ' (hay que reconectar)' : ''}.`
+    : '☁️ Sesión de Drive vencida — toca "Reintentar" para traer los últimos cambios (carpetas borradas o nuevas, fotos).';
   const selection = new Set();
   let selectMode = false;
   const folderSelection = new Set();
@@ -109,9 +118,9 @@ export async function renderFoldersView(container, folderId) {
         </section>
       ` : ''}
 
-      ${retryBannerCount ? `
+      ${showSyncBanner ? `
         <div class="sync-retry-banner">
-          <span>⚠️ ${retryBannerCount} foto(s) no se ${retryBannerCount === 1 ? 'ha' : 'han'} subido a Drive todavía${needsReconnect ? ' (hay que reconectar)' : ''}.</span>
+          <span>${syncBannerMessage}</span>
           <button type="button" class="btn btn-secondary" id="btn-retry-sync">Reintentar</button>
         </div>
       ` : ''}
@@ -177,8 +186,10 @@ export async function renderFoldersView(container, folderId) {
       btn.textContent = 'Reintentar';
       return;
     }
+    btn.textContent = 'Sincronizando…';
+    await syncDriveTreeRecursive(currentFolder); // carpetas borradas/nuevas + fotos subidas directo en Drive
     btn.textContent = 'Subiendo…';
-    await trySync();
+    await trySync(); // fotos pendientes de subir
     renderFoldersView(container, folderId);
   });
   if (currentFolder.driveFolderId) {

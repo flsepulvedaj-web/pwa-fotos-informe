@@ -181,13 +181,13 @@ export async function renderFoldersView(container, folderId) {
       if (totals.deletedCount) {
         notices.push(`${totals.deletedCount} carpeta${totals.deletedCount === 1 ? '' : 's'} borrada${totals.deletedCount === 1 ? '' : 's'} (ya no estaba${totals.deletedCount === 1 ? '' : 'n'} en Drive)`);
       }
-      if (totals.keptCount) {
-        notices.push(`${totals.keptCount} carpeta${totals.keptCount === 1 ? '' : 's'} se borró en Drive pero tenía fotos sin subir — se guardó igual acá y se desenlazó`);
+      if (totals.recoveredCount) {
+        notices.push(`${totals.recoveredCount} foto${totals.recoveredCount === 1 ? '' : 's'} sin subir se guardó${totals.recoveredCount === 1 ? '' : 'aron'} en "Recuperadas de Drive"`);
       }
       if (notices.length) toast(notices.join(' · '));
       else if (totals.error) toast(`Drive: ${totals.error}`);
 
-      if (totals.newCount || totals.deletedCount || totals.keptCount || totals.downloaded) {
+      if (totals.newCount || totals.deletedCount || totals.recoveredCount || totals.downloaded) {
         renderFoldersView(container, folderId);
       }
     });

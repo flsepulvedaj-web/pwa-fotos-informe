@@ -1,4 +1,4 @@
-import { getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deleteFolderRecursive } from './db.js';
+import { ROOT_ID, getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deleteFolderRecursive } from './db.js';
 import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile } from './googleDrive.js';
 
 let syncing = false;
@@ -53,32 +53,52 @@ export async function trySync() {
   }
 }
 
+const RECOVERED_FOLDER_NAME = 'Recuperadas de Drive';
+
 /**
- * ¿Esta carpeta o alguna de sus subcarpetas tiene fotos que todavía no se
- * terminaron de subir a Drive? Se usa antes de borrar algo automáticamente
- * por haber desaparecido en Drive — si la respuesta es sí, NUNCA se borra
- * (se perdería la única copia que queda de esas fotos).
+ * Junta (recursivamente) las fotos de una carpeta y sus subcarpetas que
+ * todavía no se terminaron de subir a Drive. Se usa justo antes de borrar
+ * una carpeta que desapareció en Drive: esas fotos puntuales se rescatan
+ * primero (ver getOrCreateRecoveredFolder) para que borrar la carpeta
+ * nunca destruya la única copia que queda de ellas.
  */
-async function hasUnsyncedPhotosRecursive(folderId) {
+async function collectUnsyncedPhotosRecursive(folderId, acc = []) {
   const photos = await getPhotosByFolder(folderId);
-  if (photos.some((p) => p.syncStatus === 'pending' || p.syncStatus === 'error')) return true;
+  for (const p of photos) {
+    if (p.syncStatus === 'pending' || p.syncStatus === 'error') acc.push(p);
+  }
   const children = await getChildFolders(folderId);
   for (const child of children) {
-    if (await hasUnsyncedPhotosRecursive(child.id)) return true;
+    await collectUnsyncedPhotosRecursive(child.id, acc);
   }
-  return false;
+  return acc;
+}
+
+/** Carpeta de "red de seguridad" en el Inicio, se crea sola la primera vez que hace falta. */
+async function getOrCreateRecoveredFolder() {
+  const roots = await getChildFolders(ROOT_ID);
+  const existing = roots.find((f) => f.name === RECOVERED_FOLDER_NAME);
+  if (existing) return existing;
+  return createFolder(
+    RECOVERED_FOLDER_NAME,
+    ROOT_ID,
+    'Fotos que no alcanzaron a subirse a Drive antes de que se borrara la carpeta original ahí — revísalas y muévelas a donde correspondan.'
+  );
 }
 
 /**
  * Revisa en Drive si dentro de la carpeta enlazada hay subcarpetas que
  * todavía no existen en la app (creadas directo en Drive por Pancho u otra
- * persona) y las crea localmente. También refleja los borrados: Drive manda
- * — si una carpeta que antes estaba enlazada ya no existe en Drive, se
- * borra también acá, EXCEPTO si todavía tiene fotos sin subir (ahí nunca se
- * borra sola: se desenlaza de Drive nomás, para no perder esas fotos).
+ * persona) y las crea localmente. También refleja los borrados: Drive
+ * manda — si una carpeta que antes estaba enlazada ya no existe en Drive,
+ * se borra también acá (Pancho: "si borro algo del Drive es porque ya no
+ * lo necesito"). Antes de borrar, si le quedaban fotos que no alcanzaron a
+ * subirse, esas fotos puntuales se rescatan a la carpeta "Recuperadas de
+ * Drive" — así nunca se destruye la única copia de una foto por accidente,
+ * pero la carpeta original siempre desaparece de la app tal como en Drive.
  */
 export async function syncFoldersFromDrive(folder) {
-  if (!folder?.driveFolderId || !navigator.onLine) return { foundNew: false, newCount: 0, deletedCount: 0, keptCount: 0, error: null };
+  if (!folder?.driveFolderId || !navigator.onLine) return { foundNew: false, newCount: 0, deletedCount: 0, recoveredCount: 0, error: null };
   try {
     const [driveChildren, localChildren] = await Promise.all([
       listDriveFolders(folder.driveFolderId),
@@ -95,26 +115,25 @@ export async function syncFoldersFromDrive(folder) {
     }
 
     let deletedCount = 0;
-    let keptCount = 0;
+    let recoveredCount = 0;
     for (const lc of localChildren) {
       if (!lc.driveFolderId || driveIds.has(lc.driveFolderId)) continue; // sigue existiendo en Drive, no se toca
-      const unsafe = await hasUnsyncedPhotosRecursive(lc.id);
-      if (unsafe) {
-        // Tiene fotos que no alcanzaron a subir: se desenlaza de Drive (para
-        // no seguir comparando contra una carpeta que ya no existe) pero el
-        // contenido local queda intacto, nunca se borra.
-        await updateFolder(lc.id, { driveFolderId: null, driveFolderName: null });
-        keptCount++;
-      } else {
-        await deleteFolderRecursive(lc.id);
-        deletedCount++;
+      const unsynced = await collectUnsyncedPhotosRecursive(lc.id);
+      if (unsynced.length) {
+        const recovered = await getOrCreateRecoveredFolder();
+        for (const p of unsynced) {
+          await updatePhoto(p.id, { folderId: recovered.id, syncStatus: null });
+        }
+        recoveredCount += unsynced.length;
       }
+      await deleteFolderRecursive(lc.id);
+      deletedCount++;
     }
 
-    return { foundNew: newCount > 0, newCount, deletedCount, keptCount, error: null, driveChildrenCount: driveChildren.length };
+    return { foundNew: newCount > 0, newCount, deletedCount, recoveredCount, error: null, driveChildrenCount: driveChildren.length };
   } catch (err) {
     console.error('Error sincronizando carpetas desde Drive:', err);
-    return { foundNew: false, newCount: 0, deletedCount: 0, keptCount: 0, error: err.message || String(err) };
+    return { foundNew: false, newCount: 0, deletedCount: 0, recoveredCount: 0, error: err.message || String(err) };
   }
 }
 
@@ -159,14 +178,14 @@ export async function syncPhotosFromDrive(folder) {
  * que el gasto de datos no es problema acá).
  */
 export async function syncDriveTreeRecursive(folder) {
-  const totals = { newCount: 0, deletedCount: 0, keptCount: 0, downloaded: 0, error: null };
+  const totals = { newCount: 0, deletedCount: 0, recoveredCount: 0, downloaded: 0, error: null };
   if (!folder?.driveFolderId || !navigator.onLine) return totals;
 
   async function walk(f) {
     const [folderResult, photoResult] = await Promise.all([syncFoldersFromDrive(f), syncPhotosFromDrive(f)]);
     totals.newCount += folderResult.newCount;
     totals.deletedCount += folderResult.deletedCount;
-    totals.keptCount += folderResult.keptCount;
+    totals.recoveredCount += folderResult.recoveredCount;
     totals.downloaded += photoResult.downloaded;
     if (folderResult.error) totals.error = folderResult.error;
     if (photoResult.error) totals.error = photoResult.error;

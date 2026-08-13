@@ -26,7 +26,7 @@ import {
   getSignedInEmail,
   signIn,
 } from '../googleDrive.js';
-import { trySync, syncFoldersFromDrive, syncPhotosFromDrive, createMatchingDriveFolder } from '../sync.js';
+import { trySync, syncDriveTreeRecursive, createMatchingDriveFolder } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow } from '../aiAvance.js';
 
 // Único correo que puede cambiar la carpeta raíz de Drive del equipo; para
@@ -90,9 +90,7 @@ export async function renderFoldersView(container, folderId) {
           ${visibleSubfolders.map((f) => `
             <button class="folder-tile" data-folder-id="${f.id}">
               <span class="folder-icon">📁</span>
-              ${f.driveOrphaned
-                ? `<span class="folder-orphan-badge" data-orphan-folder-id="${f.id}" title="Se borró en Drive — toca para eliminarla también acá">⚠️</span>`
-                : f.driveFolderId ? '<span class="folder-drive-badge" title="Enlazada con Google Drive">☁️</span>' : ''}
+              ${f.driveFolderId ? '<span class="folder-drive-badge" title="Enlazada con Google Drive">☁️</span>' : ''}
               ${subfolderPhotoCounts[f.id] ? `<span class="folder-photo-badge" title="${subfolderPhotoCounts[f.id]} foto(s)">✓ ${subfolderPhotoCounts[f.id]}</span>` : ''}
               <span class="folder-name">${escapeHTML(f.name)}</span>
               <span class="folder-menu" data-menu-folder-id="${f.id}">⋮</span>
@@ -175,24 +173,24 @@ export async function renderFoldersView(container, folderId) {
     renderFoldersView(container, folderId);
   });
   if (currentFolder.driveFolderId) {
-    Promise.all([syncFoldersFromDrive(currentFolder), syncPhotosFromDrive(currentFolder)]).then(
-      ([folderResult, photoResult]) => {
-        const notices = [];
-        if (photoResult.downloaded) {
-          notices.push(`${photoResult.downloaded} foto${photoResult.downloaded === 1 ? '' : 's'} nueva${photoResult.downloaded === 1 ? '' : 's'} desde Drive`);
-        }
-        if (folderResult.orphanedCount) {
-          notices.push(`${folderResult.orphanedCount} carpeta${folderResult.orphanedCount === 1 ? '' : 's'} borrada${folderResult.orphanedCount === 1 ? '' : 's'} en Drive — revisa el aviso ⚠️`);
-        }
-        if (notices.length) toast(notices.join(' · '));
-        else if (folderResult.error) toast(`Drive: ${folderResult.error}`);
-        else if (photoResult.error) toast(`Drive: ${photoResult.error}`);
-
-        if (folderResult.foundNew || folderResult.orphanedCount || photoResult.downloaded) {
-          renderFoldersView(container, folderId);
-        }
+    syncDriveTreeRecursive(currentFolder).then((totals) => {
+      const notices = [];
+      if (totals.downloaded) {
+        notices.push(`${totals.downloaded} foto${totals.downloaded === 1 ? '' : 's'} nueva${totals.downloaded === 1 ? '' : 's'} desde Drive`);
       }
-    );
+      if (totals.deletedCount) {
+        notices.push(`${totals.deletedCount} carpeta${totals.deletedCount === 1 ? '' : 's'} borrada${totals.deletedCount === 1 ? '' : 's'} (ya no estaba${totals.deletedCount === 1 ? '' : 'n'} en Drive)`);
+      }
+      if (totals.keptCount) {
+        notices.push(`${totals.keptCount} carpeta${totals.keptCount === 1 ? '' : 's'} se borró en Drive pero tenía fotos sin subir — se guardó igual acá y se desenlazó`);
+      }
+      if (notices.length) toast(notices.join(' · '));
+      else if (totals.error) toast(`Drive: ${totals.error}`);
+
+      if (totals.newCount || totals.deletedCount || totals.keptCount || totals.downloaded) {
+        renderFoldersView(container, folderId);
+      }
+    });
   }
 
   // Navegación de subcarpetas + selección múltiple (mantener presionada,
@@ -264,26 +262,6 @@ export async function renderFoldersView(container, folderId) {
       const id = menu.dataset.menuFolderId;
       const folder = subfolders.find((f) => f.id === id);
       await openFolderMenu(folder);
-    });
-  });
-
-  // Aviso de "se borró en Drive": un toque directo para limpiarla también
-  // acá, sin tener que entrar al menú de opciones — pero siempre con
-  // confirmación, nunca se borra sola.
-  container.querySelectorAll('.folder-orphan-badge').forEach((badge) => {
-    badge.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (folderSelectMode) return;
-      const id = badge.dataset.orphanFolderId;
-      const folder = subfolders.find((f) => f.id === id);
-      if (!folder) return;
-      const ok = await confirmDialog(
-        `"${folder.name}" se borró en Google Drive. ¿Eliminarla también acá (con sus fotos y subcarpetas)? Esta acción no se puede deshacer.`
-      );
-      if (ok) {
-        await deleteFolderRecursive(folder.id);
-        renderFoldersView(container, folderId);
-      }
     });
   });
 
@@ -577,7 +555,7 @@ export async function renderFoldersView(container, folderId) {
     } else if (action === 'unlink-drive') {
       const ok = await confirmDialog('¿Desenlazar esta carpeta de Google Drive? Las fotos ya subidas quedan como están; las nuevas dejarán de subirse solas.');
       if (ok) {
-        await updateFolder(folder.id, { driveFolderId: null, driveFolderName: null, driveOrphaned: false });
+        await updateFolder(folder.id, { driveFolderId: null, driveFolderName: null });
         toast('Carpeta desenlazada.');
         renderFoldersView(container, folderId);
       }
@@ -686,9 +664,7 @@ function driveSettingsSheet(root) {
 }
 
 async function folderActionSheet(folder) {
-  const driveAction = folder.driveOrphaned
-    ? `<button class="sheet-action" data-action="unlink-drive">⚠️ Se borró en Drive — Desenlazar aquí</button>`
-    : folder.driveFolderId
+  const driveAction = folder.driveFolderId
     ? `<button class="sheet-action" data-action="unlink-drive">☁️ Enlazada con "${escapeHTML(folder.driveFolderName || 'Drive')}" — Desenlazar</button>`
     : `<button class="sheet-action" data-action="link-drive">☁️ Enlazar con Google Drive</button>`;
   const pinAction = folder.pinned

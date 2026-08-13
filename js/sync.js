@@ -1,4 +1,4 @@
-import { getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto } from './db.js';
+import { getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deleteFolderRecursive } from './db.js';
 import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile } from './googleDrive.js';
 
 let syncing = false;
@@ -54,12 +54,31 @@ export async function trySync() {
 }
 
 /**
+ * ¿Esta carpeta o alguna de sus subcarpetas tiene fotos que todavía no se
+ * terminaron de subir a Drive? Se usa antes de borrar algo automáticamente
+ * por haber desaparecido en Drive — si la respuesta es sí, NUNCA se borra
+ * (se perdería la única copia que queda de esas fotos).
+ */
+async function hasUnsyncedPhotosRecursive(folderId) {
+  const photos = await getPhotosByFolder(folderId);
+  if (photos.some((p) => p.syncStatus === 'pending' || p.syncStatus === 'error')) return true;
+  const children = await getChildFolders(folderId);
+  for (const child of children) {
+    if (await hasUnsyncedPhotosRecursive(child.id)) return true;
+  }
+  return false;
+}
+
+/**
  * Revisa en Drive si dentro de la carpeta enlazada hay subcarpetas que
  * todavía no existen en la app (creadas directo en Drive por Pancho u otra
- * persona) y las crea localmente. Devuelve true si encontró alguna nueva.
+ * persona) y las crea localmente. También refleja los borrados: Drive manda
+ * — si una carpeta que antes estaba enlazada ya no existe en Drive, se
+ * borra también acá, EXCEPTO si todavía tiene fotos sin subir (ahí nunca se
+ * borra sola: se desenlaza de Drive nomás, para no perder esas fotos).
  */
 export async function syncFoldersFromDrive(folder) {
-  if (!folder?.driveFolderId || !navigator.onLine) return { foundNew: false, orphanedCount: 0, error: null };
+  if (!folder?.driveFolderId || !navigator.onLine) return { foundNew: false, newCount: 0, deletedCount: 0, keptCount: 0, error: null };
   try {
     const [driveChildren, localChildren] = await Promise.all([
       listDriveFolders(folder.driveFolderId),
@@ -67,35 +86,35 @@ export async function syncFoldersFromDrive(folder) {
     ]);
     const driveIds = new Set(driveChildren.map((f) => f.id));
     const knownDriveIds = new Set(localChildren.map((f) => f.driveFolderId).filter(Boolean));
-    let foundNew = false;
+    let newCount = 0;
     for (const dc of driveChildren) {
       if (knownDriveIds.has(dc.id)) continue;
       const created = await createFolder(dc.name, folder.id, '');
       await updateFolder(created.id, { driveFolderId: dc.id, driveFolderName: dc.name });
-      foundNew = true;
+      newCount++;
     }
 
-    // Carpetas que se borraron directo en Drive (Pancho suele borrar desde
-    // ahí, no desde la app): nunca se borran solas acá — podrían tener
-    // fotos que todavía no se alcanzaron a subir. Solo se marcan para que
-    // la carpeta muestre un aviso y él decida si las elimina también en la
-    // app (ver folder-orphan-badge en foldersView.js).
-    let orphanedCount = 0;
+    let deletedCount = 0;
+    let keptCount = 0;
     for (const lc of localChildren) {
-      if (!lc.driveFolderId) continue;
-      const stillExists = driveIds.has(lc.driveFolderId);
-      if (!stillExists && !lc.driveOrphaned) {
-        await updateFolder(lc.id, { driveOrphaned: true });
-        orphanedCount++;
-      } else if (stillExists && lc.driveOrphaned) {
-        await updateFolder(lc.id, { driveOrphaned: false });
+      if (!lc.driveFolderId || driveIds.has(lc.driveFolderId)) continue; // sigue existiendo en Drive, no se toca
+      const unsafe = await hasUnsyncedPhotosRecursive(lc.id);
+      if (unsafe) {
+        // Tiene fotos que no alcanzaron a subir: se desenlaza de Drive (para
+        // no seguir comparando contra una carpeta que ya no existe) pero el
+        // contenido local queda intacto, nunca se borra.
+        await updateFolder(lc.id, { driveFolderId: null, driveFolderName: null });
+        keptCount++;
+      } else {
+        await deleteFolderRecursive(lc.id);
+        deletedCount++;
       }
     }
 
-    return { foundNew, orphanedCount, error: null, driveChildrenCount: driveChildren.length };
+    return { foundNew: newCount > 0, newCount, deletedCount, keptCount, error: null, driveChildrenCount: driveChildren.length };
   } catch (err) {
     console.error('Error sincronizando carpetas desde Drive:', err);
-    return { foundNew: false, orphanedCount: 0, error: err.message || String(err) };
+    return { foundNew: false, newCount: 0, deletedCount: 0, keptCount: 0, error: err.message || String(err) };
   }
 }
 
@@ -130,6 +149,38 @@ export async function syncPhotosFromDrive(folder) {
     console.error('Error trayendo fotos desde Drive:', err);
     return { downloaded: 0, error: err.message || String(err) };
   }
+}
+
+/**
+ * Igual que syncFoldersFromDrive + syncPhotosFromDrive, pero para TODA la
+ * rama (recursivo): al entrar a "Calle 3" también revisa "4", "12", "9",
+ * etc. sin tener que abrir cada una a mano — Pancho lo pidió así para ver
+ * de un vistazo cómo va el equipo en terreno (tiene datos ilimitados, así
+ * que el gasto de datos no es problema acá).
+ */
+export async function syncDriveTreeRecursive(folder) {
+  const totals = { newCount: 0, deletedCount: 0, keptCount: 0, downloaded: 0, error: null };
+  if (!folder?.driveFolderId || !navigator.onLine) return totals;
+
+  async function walk(f) {
+    const [folderResult, photoResult] = await Promise.all([syncFoldersFromDrive(f), syncPhotosFromDrive(f)]);
+    totals.newCount += folderResult.newCount;
+    totals.deletedCount += folderResult.deletedCount;
+    totals.keptCount += folderResult.keptCount;
+    totals.downloaded += photoResult.downloaded;
+    if (folderResult.error) totals.error = folderResult.error;
+    if (photoResult.error) totals.error = photoResult.error;
+
+    // Sigue bajando por las subcarpetas enlazadas (las recién creadas
+    // arriba también quedan incluidas, porque se leen de nuevo acá).
+    const children = await getChildFolders(f.id);
+    for (const child of children) {
+      if (child.driveFolderId) await walk(child);
+    }
+  }
+
+  await walk(folder);
+  return totals;
 }
 
 /**

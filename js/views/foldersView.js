@@ -25,6 +25,7 @@ import {
   clearDriveRootFolder,
   getSignedInEmail,
   signIn,
+  isSignedIn,
 } from '../googleDrive.js';
 import { trySync, syncDriveTreeRecursive, createMatchingDriveFolder } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow } from '../aiAvance.js';
@@ -68,6 +69,14 @@ export async function renderFoldersView(container, folderId) {
   const currentFolder = path.length
     ? path[path.length - 1]
     : { id: ROOT_ID, name: 'Inicio', description: '' };
+  // La sincronización automática nunca pide sesión sola (ver sync.js), así
+  // que una foto 'pending' sin sesión vigente se queda ahí sin avisar por
+  // su cuenta — por eso el banner también se fija si hace falta reconectar,
+  // no solo si ya hubo un 'error'.
+  const errorPhotosCount = photos.filter((p) => p.syncStatus === 'error').length;
+  const pendingPhotosCount = photos.filter((p) => p.syncStatus === 'pending').length;
+  const needsReconnect = pendingPhotosCount > 0 && !isSignedIn();
+  const retryBannerCount = errorPhotosCount + (needsReconnect ? pendingPhotosCount : 0);
   const selection = new Set();
   let selectMode = false;
   const folderSelection = new Set();
@@ -100,9 +109,9 @@ export async function renderFoldersView(container, folderId) {
         </section>
       ` : ''}
 
-      ${photos.some((p) => p.syncStatus === 'error') ? `
+      ${retryBannerCount ? `
         <div class="sync-retry-banner">
-          <span>⚠️ ${photos.filter((p) => p.syncStatus === 'error').length} foto(s) no se subieron a Drive todavía.</span>
+          <span>⚠️ ${retryBannerCount} foto(s) no se ${retryBannerCount === 1 ? 'ha' : 'han'} subido a Drive todavía${needsReconnect ? ' (hay que reconectar)' : ''}.</span>
           <button type="button" class="btn btn-secondary" id="btn-retry-sync">Reintentar</button>
         </div>
       ` : ''}

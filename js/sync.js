@@ -1,5 +1,5 @@
 import { ROOT_ID, getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deleteFolderRecursive } from './db.js';
-import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile } from './googleDrive.js';
+import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile, isSignedIn } from './googleDrive.js';
 
 let syncing = false;
 const listeners = new Set();
@@ -28,6 +28,13 @@ function photoFilename(photo) {
 export async function trySync() {
   if (syncing) return;
   if (!navigator.onLine) return;
+  // Nunca se intenta subir en segundo plano si la sesión de Google ya no
+  // está vigente: pedir una nueva acá (sin que Pancho haya hecho clic en
+  // nada) hace que el navegador muestre la ventanita de conexión sola, una
+  // y otra vez. Mejor dejar las fotos en 'pending' — el aviso de "Reintentar"
+  // en foldersView.js ya detecta esto y solo ahí, con un clic real, se
+  // vuelve a pedir sesión.
+  if (!isSignedIn()) return;
   syncing = true;
   try {
     const pending = await getPendingUploads();
@@ -98,7 +105,13 @@ async function getOrCreateRecoveredFolder() {
  * pero la carpeta original siempre desaparece de la app tal como en Drive.
  */
 export async function syncFoldersFromDrive(folder) {
-  if (!folder?.driveFolderId || !navigator.onLine) return { foundNew: false, newCount: 0, deletedCount: 0, recoveredCount: 0, error: null };
+  // Igual que en trySync(): si la sesión de Google venció, no se pide una
+  // nueva sola — eso es lo que le mostraba a Pancho la ventanita de Google
+  // cada vez que abría una carpeta. Se espera a que él haga clic en
+  // "Reintentar" (un gesto real del usuario).
+  if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) {
+    return { foundNew: false, newCount: 0, deletedCount: 0, recoveredCount: 0, error: null };
+  }
   try {
     const [driveChildren, localChildren] = await Promise.all([
       listDriveFolders(folder.driveFolderId),
@@ -145,7 +158,7 @@ export async function syncFoldersFromDrive(folder) {
  * nuevo la próxima vez.
  */
 export async function syncPhotosFromDrive(folder) {
-  if (!folder?.driveFolderId || !navigator.onLine) return { downloaded: 0, error: null };
+  if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return { downloaded: 0, error: null };
   try {
     const [driveFiles, localPhotos] = await Promise.all([
       listDriveFiles(folder.driveFolderId),
@@ -179,7 +192,7 @@ export async function syncPhotosFromDrive(folder) {
  */
 export async function syncDriveTreeRecursive(folder) {
   const totals = { newCount: 0, deletedCount: 0, recoveredCount: 0, downloaded: 0, error: null };
-  if (!folder?.driveFolderId || !navigator.onLine) return totals;
+  if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return totals;
 
   async function walk(f) {
     const [folderResult, photoResult] = await Promise.all([syncFoldersFromDrive(f), syncPhotosFromDrive(f)]);

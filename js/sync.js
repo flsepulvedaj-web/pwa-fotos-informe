@@ -1,4 +1,4 @@
-import { ROOT_ID, getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deleteFolderRecursive } from './db.js';
+import { ROOT_ID, getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deletePhoto, deleteFolderRecursive } from './db.js';
 import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile, isSignedIn } from './googleDrive.js';
 
 let syncing = false;
@@ -47,8 +47,12 @@ export async function trySync() {
         continue;
       }
       try {
-        await uploadFile(folder.driveFolderId, photo.blob, photoFilename(photo));
-        await updatePhoto(photo.id, { syncStatus: 'synced' });
+        // Guardar el id del archivo recién creado en Drive es clave: sin
+        // esto, la sincronización de fotos "traídas desde Drive" nunca
+        // reconocía esta foto como propia y la volvía a descargar como si
+        // fuera nueva cada vez que se abría la carpeta — duplicándola.
+        const uploaded = await uploadFile(folder.driveFolderId, photo.blob, photoFilename(photo));
+        await updatePhoto(photo.id, { syncStatus: 'synced', driveFileId: uploaded.id });
       } catch (err) {
         console.error('Error subiendo foto a Drive:', err);
         await updatePhoto(photo.id, { syncStatus: 'error' });
@@ -190,9 +194,17 @@ export async function syncPhotosFromDrive(folder) {
  * de un vistazo cómo va el equipo en terreno (tiene datos ilimitados, así
  * que el gasto de datos no es problema acá).
  */
+let treeSyncing = false;
+
 export async function syncDriveTreeRecursive(folder) {
   const totals = { newCount: 0, deletedCount: 0, recoveredCount: 0, downloaded: 0, error: null };
   if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return totals;
+  // Si Pancho entra y sale rápido de varias carpetas, cada apertura dispara
+  // esta sincronización — sin este seguro, dos pasadas podían solaparse,
+  // leer el mismo estado "todavía no bajada" antes de que la primera
+  // terminara de guardar, y descargar la misma foto de Drive dos veces.
+  if (treeSyncing) return totals;
+  treeSyncing = true;
 
   async function walk(f) {
     const [folderResult, photoResult] = await Promise.all([syncFoldersFromDrive(f), syncPhotosFromDrive(f)]);
@@ -211,8 +223,44 @@ export async function syncDriveTreeRecursive(folder) {
     }
   }
 
-  await walk(folder);
+  try {
+    await walk(folder);
+  } finally {
+    treeSyncing = false;
+  }
   return totals;
+}
+
+/**
+ * Quita fotos duplicadas de una carpeta y sus subcarpetas (recursivo) —
+ * quedaron así por un bug ya arreglado (varias descargas de la misma foto
+ * de Drive antes de que la primera terminara de guardarse). Dos fotos
+ * cuentan como duplicadas solo si comparten el mismo driveFileId — nunca
+ * se tocan las fotos sin ese dato (todas las tomadas con la cámara antes
+ * de este arreglo), para no arriesgar borrar algo real por error. Devuelve
+ * cuántas se quitaron.
+ */
+export async function deduplicatePhotosRecursive(folderId) {
+  let removed = 0;
+  async function processFolder(id) {
+    const photos = await getPhotosByFolder(id);
+    const seen = new Set();
+    for (const p of photos) {
+      if (!p.driveFileId) continue;
+      if (seen.has(p.driveFileId)) {
+        await deletePhoto(p.id);
+        removed++;
+      } else {
+        seen.add(p.driveFileId);
+      }
+    }
+    const children = await getChildFolders(id);
+    for (const child of children) {
+      await processFolder(child.id);
+    }
+  }
+  await processFolder(folderId);
+  return removed;
 }
 
 /**

@@ -27,7 +27,7 @@ import {
   signIn,
   isSignedIn,
 } from '../googleDrive.js';
-import { trySync, syncDriveTreeRecursive, createMatchingDriveFolder } from '../sync.js';
+import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow } from '../aiAvance.js';
 
 // Único correo que puede cambiar la carpeta raíz de Drive del equipo; para
@@ -603,6 +603,11 @@ export async function renderFoldersView(container, folderId) {
     } else if (action === 'ai-avance') {
       await openAiAvanceFlow(folder);
       renderFoldersView(container, folderId);
+    } else if (action === 'dedupe') {
+      toast('Buscando duplicados…');
+      const removed = await deduplicatePhotosRecursive(folder.id);
+      toast(removed ? `Se quitaron ${removed} foto(s) duplicada(s).` : 'No había fotos duplicadas.');
+      renderFoldersView(container, folderId);
     } else if (action === 'delete') {
       const ok = await confirmDialog(
         `¿Eliminar la carpeta "${folder.name}" y todo su contenido (subcarpetas y fotos)? Esta acción no se puede deshacer.`
@@ -708,6 +713,7 @@ async function folderActionSheet(folder) {
         ${aiAction}
         ${pinAction}
         ${driveAction}
+        ${folder.driveFolderId ? '<button class="sheet-action" data-action="dedupe">🧹 Quitar fotos duplicadas</button>' : ''}
         <button class="sheet-action sheet-danger" data-action="delete">🗑️ Eliminar</button>
         <button class="sheet-action" data-action="cancel">Cancelar</button>
       </div>

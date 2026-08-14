@@ -64,7 +64,17 @@ async function callAiAvanceBackend(groupName, units, token) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Error comparando fotos (${res.status}): ${text}`);
+    // El Worker devuelve {"error":"..."} — mostramos ese motivo real (ej.
+    // "correo no autorizado", "límite diario alcanzado") en vez de un
+    // mensaje genérico, para poder diagnosticar sin tener que ir a mirar
+    // los logs de Cloudflare cada vez.
+    let reason = text;
+    try {
+      reason = JSON.parse(text).error || text;
+    } catch {
+      // no era JSON, se usa el texto tal cual
+    }
+    throw new Error(reason || `Error comparando fotos (${res.status})`);
   }
   return res.json();
 }
@@ -206,11 +216,7 @@ export async function openAiAvanceFlow(folder) {
   } catch (err) {
     console.error('Error comparando fotos con IA:', err);
     loadingOverlay.remove();
-    toast(
-      err.offline
-        ? 'Necesitás internet para usar esta función — probá de nuevo cuando tengas señal.'
-        : 'No se pudo comparar las fotos con la IA. Probá de nuevo.'
-    );
+    toast(err.offline ? 'Necesitás internet para usar esta función — probá de nuevo cuando tengas señal.' : (err.message || 'No se pudo comparar las fotos con la IA. Probá de nuevo.'));
     return;
   }
   loadingOverlay.remove();

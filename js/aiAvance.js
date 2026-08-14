@@ -139,6 +139,11 @@ function showLoadingOverlay(message) {
   return overlay;
 }
 
+function updateLoadingMessage(overlay, message) {
+  const p = overlay.querySelector('p');
+  if (p) p.textContent = message;
+}
+
 function aiResultSheet({ groupName, ranking, reasoning, substitutions }) {
   const most = ranking[0];
   const least = ranking[ranking.length - 1];
@@ -174,13 +179,70 @@ function aiResultSheet({ groupName, ranking, reasoning, substitutions }) {
   });
 }
 
+function aiMultiResultSheet(results, skippedNames) {
+  const okCount = results.filter((r) => r.ok).length;
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const rowsHTML = results
+      .map((r) => {
+        if (r.ok) {
+          const most = r.ranking[0];
+          const least = r.ranking[r.ranking.length - 1];
+          return `
+            <div class="ai-avance-multi-row">
+              <h3>${escapeHTML(r.folder.name)}</h3>
+              <p class="modal-message"><strong>Más avanzada:</strong> ${escapeHTML(most)} · <strong>Menos avanzada:</strong> ${escapeHTML(least)}</p>
+              ${r.reasoning ? `<p class="ai-avance-reasoning">${escapeHTML(r.reasoning)}</p>` : ''}
+              ${r.substitutions.length ? `<ul class="ai-avance-substitutions">${r.substitutions.map((s) => `<li>${escapeHTML(s)}</li>`).join('')}</ul>` : ''}
+            </div>
+          `;
+        }
+        return `
+          <div class="ai-avance-multi-row ai-avance-multi-error">
+            <h3>${escapeHTML(r.folder.name)}</h3>
+            <p class="modal-message">⚠️ No se incluye: ${escapeHTML(r.error)}</p>
+          </div>
+        `;
+      })
+      .join('');
+    const skippedHTML = skippedNames.length
+      ? `<p class="modal-message">⚠️ No se revisaron (no tienen forma de Calle/Piso): ${skippedNames.map(escapeHTML).join(', ')}</p>`
+      : '';
+
+    overlay.innerHTML = `
+      <div class="modal ai-avance-result ai-avance-multi" role="dialog" aria-modal="true">
+        <h2>Resultado de la IA (${okCount} de ${results.length})</h2>
+        <div class="ai-avance-multi-list">${rowsHTML}</div>
+        ${skippedHTML}
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-action="cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary" data-action="confirm">Usar este resultado</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    function cleanup(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(false);
+      const btn = e.target.closest('[data-action]');
+      if (btn) cleanup(btn.dataset.action === 'confirm');
+    });
+  });
+}
+
 /**
- * Punto de entrada del botón "🤖 Armar informe con IA" en una carpeta
- * "Calle X"/"Piso Y". Compara las unidades numeradas con IA, arma las 8
- * fotos del informe y abre la misma pantalla de revisión que ya usa el
- * resto de la app.
+ * Hace todo el trabajo de comparar UNA carpeta "Calle X"/"Piso Y" con IA y
+ * armar sus 8 fotos — sin tocar la interfaz (nada de overlays ni
+ * diálogos), para poder reusarlo tanto para una sola carpeta
+ * (openAiAvanceFlow) como para varias combinadas (openAiAvanceMultiFlow).
+ * Nunca lanza: siempre devuelve { ok, folder, ... }.
  */
-export async function openAiAvanceFlow(folder) {
+async function compareGroup(folder, token) {
   const children = await getChildFolders(folder.id);
   const fotosFolder = children.find((f) => /^fotos\s/i.test(f.name.trim()));
   const unitFolders = children.filter((f) => /^\d+$/.test(f.name.trim()));
@@ -191,20 +253,16 @@ export async function openAiAvanceFlow(folder) {
   const photographedUnits = unitsWithCounts.filter((u) => u.count > 0);
 
   if (photographedUnits.length < 2) {
-    toast('Necesitás fotos de al menos 2 casas/deptos para usar esta función.');
-    return;
+    return { ok: false, folder, error: 'Necesita fotos de al menos 2 casas/deptos.' };
   }
 
   const generalPhotos = fotosFolder ? await getPhotosByFolder(fotosFolder.id) : [];
   if (generalPhotos.length < 2) {
-    toast(`"${fotosFolder ? fotosFolder.name : 'Fotos'}" necesita al menos 2 fotos generales.`);
-    return;
+    return { ok: false, folder, error: `"${fotosFolder ? fotosFolder.name : 'Fotos'}" necesita al menos 2 fotos generales.` };
   }
 
-  const loadingOverlay = showLoadingOverlay('Comparando fotos con IA…');
   let result;
   try {
-    const token = await signIn();
     const unitsPayload = await Promise.all(
       photographedUnits.map(async ({ folder: uf }) => {
         const photos = (await getPhotosByFolder(uf.id)).slice(0, MAX_PHOTOS_PER_UNIT);
@@ -214,17 +272,17 @@ export async function openAiAvanceFlow(folder) {
     );
     result = await callAiAvanceBackend(folder.name, unitsPayload, token);
   } catch (err) {
-    console.error('Error comparando fotos con IA:', err);
-    loadingOverlay.remove();
-    toast(err.offline ? 'Necesitás internet para usar esta función — probá de nuevo cuando tengas señal.' : (err.message || 'No se pudo comparar las fotos con la IA. Probá de nuevo.'));
-    return;
+    console.error(`Error comparando fotos con IA (${folder.name}):`, err);
+    return {
+      ok: false,
+      folder,
+      error: err.offline ? 'Necesitás internet para usar esta función.' : (err.message || 'No se pudo comparar las fotos con la IA.'),
+    };
   }
-  loadingOverlay.remove();
 
   const { ranking, reasoning } = result || {};
   if (!ranking || ranking.length < 2) {
-    toast('La IA no pudo determinar un resultado. Probá de nuevo.');
-    return;
+    return { ok: false, folder, error: 'La IA no pudo determinar un resultado.' };
   }
 
   const photosByUnit = new Map();
@@ -232,17 +290,93 @@ export async function openAiAvanceFlow(folder) {
     photosByUnit.set(uf.name.trim(), await getPhotosByFolder(uf.id));
   }
 
-  const { finalPhotos, substitutions } = buildFinalPhotoArray({
-    groupName: folder.name,
-    generalPhotos,
-    ranking,
-    photosByUnit,
-  });
+  const { finalPhotos, substitutions } = buildFinalPhotoArray({ groupName: folder.name, generalPhotos, ranking, photosByUnit });
 
-  const proceed = await aiResultSheet({ groupName: folder.name, ranking, reasoning, substitutions });
+  return { ok: true, folder, ranking, reasoning, substitutions, finalPhotos };
+}
+
+/**
+ * Punto de entrada del botón "🤖 Armar informe con IA" en una carpeta
+ * "Calle X"/"Piso Y". Compara las unidades numeradas con IA, arma las 8
+ * fotos del informe y abre la misma pantalla de revisión que ya usa el
+ * resto de la app.
+ */
+export async function openAiAvanceFlow(folder) {
+  let token;
+  try {
+    token = await signIn();
+  } catch (err) {
+    console.error(err);
+    toast('No se pudo conectar con Google.');
+    return;
+  }
+
+  const loadingOverlay = showLoadingOverlay('Comparando fotos con IA…');
+  const result = await compareGroup(folder, token);
+  loadingOverlay.remove();
+
+  if (!result.ok) {
+    toast(result.error);
+    return;
+  }
+
+  const proceed = await aiResultSheet({ groupName: folder.name, ranking: result.ranking, reasoning: result.reasoning, substitutions: result.substitutions });
   if (!proceed) return;
 
   localStorage.setItem(LAST_FORMAT_KEY, /^piso\s/i.test(folder.name.trim()) ? 'depto-avance' : 'casas-avance');
 
-  await openExportReviewScreen(finalPhotos, { name: folder.name, reportNumber: '', reportPeriod: '' });
+  await openExportReviewScreen(result.finalPhotos, { name: folder.name, reportNumber: '', reportPeriod: '' });
+}
+
+/**
+ * Igual que openAiAvanceFlow, pero para varias carpetas "Calle X"/"Piso Y"
+ * seleccionadas a la vez (selección múltiple ya existente en
+ * foldersView.js) — arma un solo informe combinado con el bloque de 8
+ * fotos de cada una, comparándolas una por una y mostrando un resumen
+ * conjunto antes de armar el PDF. Las carpetas que no tengan la forma
+ * correcta, o cuya comparación falle, se dejan afuera avisando por qué —
+ * el resto del informe se arma igual con las que sí funcionaron.
+ */
+export async function openAiAvanceMultiFlow(folders) {
+  const checks = await Promise.all(folders.map(async (f) => [f, await isAiAvanceGroup(f)]));
+  const validFolders = checks.filter(([, ok]) => ok).map(([f]) => f);
+  const skippedNames = checks.filter(([, ok]) => !ok).map(([f]) => f.name);
+
+  if (!validFolders.length) {
+    toast('Ninguna de las carpetas seleccionadas tiene la forma "Calle X"/"Piso Y" necesaria.');
+    return;
+  }
+
+  let token;
+  try {
+    token = await signIn();
+  } catch (err) {
+    console.error(err);
+    toast('No se pudo conectar con Google.');
+    return;
+  }
+
+  const loadingOverlay = showLoadingOverlay(`Comparando ${validFolders[0].name} (1 de ${validFolders.length})…`);
+  const results = [];
+  for (let i = 0; i < validFolders.length; i++) {
+    updateLoadingMessage(loadingOverlay, `Comparando ${validFolders[i].name} (${i + 1} de ${validFolders.length})…`);
+    results.push(await compareGroup(validFolders[i], token));
+  }
+  loadingOverlay.remove();
+
+  const succeeded = results.filter((r) => r.ok);
+  if (!succeeded.length) {
+    toast('No se pudo comparar ninguna de las carpetas seleccionadas.');
+    return;
+  }
+
+  const proceed = await aiMultiResultSheet(results, skippedNames);
+  if (!proceed) return;
+
+  localStorage.setItem(LAST_FORMAT_KEY, /^piso\s/i.test(succeeded[0].folder.name.trim()) ? 'depto-avance' : 'casas-avance');
+
+  const finalPhotos = succeeded.flatMap((r) => r.finalPhotos);
+  const combinedName = succeeded.map((r) => r.folder.name).join(' + ');
+
+  await openExportReviewScreen(finalPhotos, { name: combinedName, reportNumber: '', reportPeriod: '' });
 }

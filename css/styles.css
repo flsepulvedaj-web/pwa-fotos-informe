@@ -662,6 +662,30 @@ button {
   color: var(--color-text-muted);
 }
 
+.ai-avance-multi .ai-avance-multi-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.ai-avance-multi-row {
+  padding: 10px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.ai-avance-multi-row:first-child {
+  border-top: none;
+}
+
+.ai-avance-multi-row h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.ai-avance-multi-error .modal-message {
+  color: var(--color-danger);
+}
+
 /* ---------- Toast ---------- */
 
 .toast {

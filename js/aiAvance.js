@@ -6,11 +6,9 @@ import { openExportReviewScreen } from './views/exportView.js';
 const LAST_FORMAT_KEY = 'export-last-format';
 const MAX_PHOTOS_PER_UNIT = 4; // tope de fotos por casa/depto que se manda a comparar (costo/tamaño del pedido)
 
-// URL del Cloudflare Worker que hace la comparación con IA. Mientras no
-// esté desplegado (Fase 4 del plan), queda en null y callAiAvanceBackend()
-// usa un resultado simulado para poder construir y probar todo el resto
-// del flujo sin depender del backend real.
-const AI_BACKEND_URL = null; // TODO: reemplazar por la URL real del Worker
+// URL del Cloudflare Worker que hace la comparación con IA (ver
+// len-reports-ai-backend/ — proyecto aparte de este repo).
+const AI_BACKEND_URL = 'https://len-reports-ai-avance.flsepulvedaj.workers.dev/compare-progress';
 
 /**
  * ¿Esta carpeta está armada como grupo "Calle X" / "Piso Y" para el

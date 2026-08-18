@@ -28,7 +28,7 @@ import {
   isSignedIn,
 } from '../googleDrive.js';
 import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder } from '../sync.js';
-import { isAiAvanceGroup, openAiAvanceFlow, openAiAvanceMultiFlow } from '../aiAvance.js';
+import { isAiAvanceGroup, openAiAvanceFlow, openAiAvanceMultiFlow, openSameAdvanceMultiFlow } from '../aiAvance.js';
 
 // Único correo que puede cambiar la carpeta raíz de Drive del equipo; para
 // cualquier otra cuenta queda fija (ver ⚙️ en el header de Inicio).
@@ -161,6 +161,7 @@ export async function renderFoldersView(container, folderId) {
       <span id="folder-selection-count">0 seleccionadas</span>
       <div class="selection-actions">
         <button class="btn btn-secondary" id="btn-cancel-folder-select">Cancelar</button>
+        <button class="btn btn-secondary" id="btn-export-folders-same">🏢 Mismo avance</button>
         <button class="btn btn-secondary" id="btn-export-folders-ai">🤖 IA combinado</button>
         <button class="btn btn-primary" id="btn-export-folders">Exportar combinado</button>
       </div>
@@ -291,6 +292,7 @@ export async function renderFoldersView(container, folderId) {
   const btnCancelFolderSelect = container.querySelector('#btn-cancel-folder-select');
   const btnExportFolders = container.querySelector('#btn-export-folders');
   const btnExportFoldersAI = container.querySelector('#btn-export-folders-ai');
+  const btnExportFoldersSame = container.querySelector('#btn-export-folders-same');
 
   function setFolderSelectMode(on) {
     folderSelectMode = on;
@@ -308,6 +310,7 @@ export async function renderFoldersView(container, folderId) {
     folderSelectionCount.textContent = `${folderSelection.size} seleccionada${folderSelection.size === 1 ? '' : 's'}`;
     btnExportFolders.disabled = folderSelection.size === 0;
     btnExportFoldersAI.disabled = folderSelection.size === 0;
+    btnExportFoldersSame.disabled = folderSelection.size === 0;
   }
 
   btnCancelFolderSelect.addEventListener('click', () => setFolderSelectMode(false));
@@ -331,6 +334,14 @@ export async function renderFoldersView(container, folderId) {
     const selectedFolders = (await Promise.all([...folderSelection].map((id) => getFolder(id)))).filter(Boolean);
     setFolderSelectMode(false);
     await openAiAvanceMultiFlow(selectedFolders);
+    renderFoldersView(container, folderId);
+  });
+
+  btnExportFoldersSame.addEventListener('click', async () => {
+    if (!folderSelection.size) return;
+    const selectedFolders = (await Promise.all([...folderSelection].map((id) => getFolder(id)))).filter(Boolean);
+    setFolderSelectMode(false);
+    await openSameAdvanceMultiFlow(selectedFolders);
     renderFoldersView(container, folderId);
   });
 

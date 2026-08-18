@@ -380,3 +380,137 @@ export async function openAiAvanceMultiFlow(folders) {
 
   await openExportReviewScreen(finalPhotos, { name: combinedName, reportNumber: '', reportPeriod: '' });
 }
+
+// ---------- "Mismo avance" combinado (sin IA — no hay nada que comparar) ----------
+//
+// Para torres/calles donde todas las unidades de un piso van con el mismo
+// avance (no hace falta elegir más/menos avanzada), el trabajo tedioso es
+// puramente de armado: 2 fotos generales tituladas "Piso X" + 6 fotos de
+// deptos al azar, por cada piso, en orden — nada que la IA necesite
+// decidir. Por eso esto no llama al backend ni pide sesión de Google: solo
+// junta fotos que ya están descargadas localmente.
+
+/**
+ * ¿Esta carpeta sirve como grupo "mismo avance"? Necesita una subcarpeta
+ * "Fotos ..." (fotos generales) y al menos otra subcarpeta con fotos —
+ * a diferencia de isAiAvanceGroup, no exige que esa otra carpeta tenga
+ * nombre numérico: puede ser una sola carpeta "Deptos Piso X" con todo
+ * junto, varias numeradas, o cualquier combinación.
+ */
+export async function isSameAdvanceGroup(folder) {
+  if (!folder || !folder.id) return false;
+  const children = await getChildFolders(folder.id);
+  const fotosFolder = children.find((f) => /^fotos\s/i.test(f.name.trim()));
+  if (!fotosFolder) return false;
+  const otherFolders = children.filter((f) => f.id !== fotosFolder.id);
+  const counts = await Promise.all(otherFolders.map((f) => getPhotoCountByFolder(f.id)));
+  return counts.some((c) => c > 0);
+}
+
+/**
+ * Arma el bloque de 8 fotos (2 generales + hasta 6 de depto, todas al
+ * azar) de UN piso/calle "mismo avance". Si hay varias carpetas de fotos
+ * de depto (ej. un piso repartido en 2 carpetas), se juntan todas antes de
+ * elegir — así no importa cómo esté organizado el piso, mientras tenga
+ * fotos en alguna subcarpeta que no sea la de "Fotos ...".
+ */
+async function buildSameAdvanceBlock(folder) {
+  const children = await getChildFolders(folder.id);
+  const fotosFolder = children.find((f) => /^fotos\s/i.test(f.name.trim()));
+  const otherFolders = children.filter((f) => f.id !== fotosFolder?.id);
+
+  const generalPhotos = fotosFolder ? await getPhotosByFolder(fotosFolder.id) : [];
+  if (generalPhotos.length < 2) {
+    return { ok: false, folder, error: `"${fotosFolder ? fotosFolder.name : 'Fotos'}" necesita al menos 2 fotos generales.` };
+  }
+
+  const depotoPhotoArrays = await Promise.all(otherFolders.map((f) => getPhotosByFolder(f.id)));
+  const depotoPhotos = depotoPhotoArrays.flat();
+  if (!depotoPhotos.length) {
+    return { ok: false, folder, error: 'No hay fotos de departamentos en esta carpeta todavía.' };
+  }
+
+  const generalPick = pickRandom(generalPhotos, 2).map((p) => ({ ...p, title: folder.name }));
+  const depotoPick = pickRandom(depotoPhotos, Math.min(6, depotoPhotos.length));
+
+  return { ok: true, folder, finalPhotos: [...generalPick, ...depotoPick], depotoCount: depotoPick.length };
+}
+
+function sameAdvanceResultSheet(results) {
+  const okCount = results.filter((r) => r.ok).length;
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const rowsHTML = results
+      .map((r) => {
+        if (r.ok) {
+          const short = r.depotoCount < 6
+            ? ` <span class="ai-avance-multi-warn">(solo ${r.depotoCount} de depto — menos de 6)</span>`
+            : '';
+          return `
+            <div class="ai-avance-multi-row">
+              <h3>${escapeHTML(r.folder.name)}</h3>
+              <p class="modal-message">✅ ${r.finalPhotos.length} fotos: 2 generales + ${r.depotoCount} de depto${short}</p>
+            </div>
+          `;
+        }
+        return `
+          <div class="ai-avance-multi-row ai-avance-multi-error">
+            <h3>${escapeHTML(r.folder.name)}</h3>
+            <p class="modal-message">⚠️ No se incluye: ${escapeHTML(r.error)}</p>
+          </div>
+        `;
+      })
+      .join('');
+
+    overlay.innerHTML = `
+      <div class="modal ai-avance-result ai-avance-multi" role="dialog" aria-modal="true">
+        <h2>Mismo avance combinado (${okCount} de ${results.length})</h2>
+        <div class="ai-avance-multi-list">${rowsHTML}</div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-action="cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary" data-action="confirm">Usar este resultado</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    function cleanup(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(false);
+      const btn = e.target.closest('[data-action]');
+      if (btn) cleanup(btn.dataset.action === 'confirm');
+    });
+  });
+}
+
+/**
+ * Punto de entrada del botón "🏢 Mismo avance combinado": arma un informe
+ * con varios pisos/calles donde todas las unidades van con el mismo
+ * avance — 2 fotos generales tituladas + 6 de depto al azar por cada uno,
+ * concatenados en el orden en que se seleccionaron. No llama a ninguna
+ * IA ni necesita sesión de Google — solo trabaja con fotos ya guardadas
+ * localmente, así que es instantáneo y sin costo.
+ */
+export async function openSameAdvanceMultiFlow(folders) {
+  const results = await Promise.all(folders.map((f) => buildSameAdvanceBlock(f)));
+  const succeeded = results.filter((r) => r.ok);
+
+  if (!succeeded.length) {
+    toast('Ninguna de las carpetas seleccionadas tiene fotos de departamentos todavía.');
+    return;
+  }
+
+  const proceed = await sameAdvanceResultSheet(results);
+  if (!proceed) return;
+
+  localStorage.setItem(LAST_FORMAT_KEY, /^piso\s/i.test(succeeded[0].folder.name.trim()) ? 'depto-iguales' : 'casas-iguales');
+
+  const finalPhotos = succeeded.flatMap((r) => r.finalPhotos);
+  const combinedName = succeeded.map((r) => r.folder.name).join(' + ');
+
+  await openExportReviewScreen(finalPhotos, { name: combinedName, reportNumber: '', reportPeriod: '' });
+}

@@ -13,6 +13,25 @@ function notify() {
   listeners.forEach((fn) => fn());
 }
 
+/**
+ * Corre fn sobre cada item, como máximo `limit` a la vez en paralelo (en
+ * vez de uno por uno en fila) — con árboles grandes (ej. un edificio de
+ * varios pisos) esto reduce mucho la espera, sin mandar cientos de
+ * pedidos a la vez a la API de Drive.
+ */
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 function photoFilename(photo) {
   const d = new Date(photo.createdAt);
   const pad = (n) => String(n).padStart(2, '0');
@@ -169,9 +188,9 @@ export async function syncPhotosFromDrive(folder) {
       getPhotosByFolder(folder.id),
     ]);
     const knownDriveFileIds = new Set(localPhotos.map((p) => p.driveFileId).filter(Boolean));
+    const newFiles = driveFiles.filter((file) => !knownDriveFileIds.has(file.id));
     let downloaded = 0;
-    for (const file of driveFiles) {
-      if (knownDriveFileIds.has(file.id)) continue;
+    await mapWithConcurrency(newFiles, 4, async (file) => {
       try {
         const blob = await downloadDriveFile(file.id);
         await addPhoto({ folderId: folder.id, blob, title: '', note: '', syncStatus: 'synced', driveFileId: file.id });
@@ -179,7 +198,7 @@ export async function syncPhotosFromDrive(folder) {
       } catch (err) {
         console.error(`Error descargando "${file.name}" de Drive:`, err);
       }
-    }
+    });
     return { downloaded, error: null };
   } catch (err) {
     console.error('Error trayendo fotos desde Drive:', err);
@@ -229,11 +248,11 @@ export async function syncDriveTreeRecursive(folder, onProgress) {
     if (onProgress) onProgress({ folder: f, totals });
 
     // Sigue bajando por las subcarpetas enlazadas (las recién creadas
-    // arriba también quedan incluidas, porque se leen de nuevo acá).
-    const children = await getChildFolders(f.id);
-    for (const child of children) {
-      if (child.driveFolderId) await walk(child);
-    }
+    // arriba también quedan incluidas, porque se leen de nuevo acá) — de a
+    // varias a la vez, no una por una, para no esperar el árbol completo
+    // en fila (ej. las 6-8 subcarpetas de cada piso de un edificio).
+    const children = (await getChildFolders(f.id)).filter((child) => child.driveFolderId);
+    await mapWithConcurrency(children, 3, (child) => walk(child));
   }
 
   try {

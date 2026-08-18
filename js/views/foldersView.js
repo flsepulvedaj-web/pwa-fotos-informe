@@ -8,7 +8,7 @@ import {
   deleteFolderRecursive,
   getPhotosByFolder,
   getPhotosByIds,
-  getPhotoCountByFolder,
+  getPhotoCountByFolderRecursive,
   getAllFolders,
   getPinnedFolders,
   movePhotos,
@@ -46,7 +46,16 @@ function revokeAllURLs() {
   objectURLs = [];
 }
 
+// Cada llamada a renderFoldersView (cada vez que se entra a una carpeta de
+// verdad) marca la vista actual con un número nuevo. Un repintado que
+// llega tarde desde una sincronización en el fondo (después de que Pancho
+// ya se movió a otra carpeta) compara su número contra este y, si ya no
+// coincide, se salta el repintado — así nunca "secuestra" la navegación
+// devolviéndolo a la carpeta anterior de golpe.
+let activeViewToken = 0;
+
 export async function renderFoldersView(container, folderId) {
+  const myViewToken = ++activeViewToken;
   revokeAllURLs();
 
   const [path, subfolders, photos, pinnedFolders] = await Promise.all([
@@ -63,7 +72,7 @@ export async function renderFoldersView(container, folderId) {
   // loteo con muchas casas, cuáles ya se visitaron) — solo el número, no las
   // fotos completas, para que no sea lento con muchas carpetas.
   const subfolderPhotoCounts = Object.fromEntries(
-    await Promise.all(visibleSubfolders.map(async (f) => [f.id, await getPhotoCountByFolder(f.id)]))
+    await Promise.all(visibleSubfolders.map(async (f) => [f.id, await getPhotoCountByFolderRecursive(f.id)]))
   );
 
   const currentFolder = path.length
@@ -208,6 +217,10 @@ export async function renderFoldersView(container, folderId) {
         progressNotified = true;
         toast('🔄 Sincronizando con Drive… puede demorar si hay muchas fotos.');
       }
+      // Si Pancho ya se movió a otra carpeta mientras esto seguía corriendo
+      // en el fondo, este repintado quedó atrasado — nunca lo devolvemos a
+      // la carpeta vieja de golpe.
+      if (myViewToken !== activeViewToken) return;
       const now = Date.now();
       if (now - lastProgressRender > 1500 && !selectMode && !folderSelectMode) {
         lastProgressRender = now;
@@ -227,7 +240,7 @@ export async function renderFoldersView(container, folderId) {
       if (notices.length) toast(notices.join(' · '));
       else if (totals.error) toast(`Drive: ${totals.error}`);
 
-      if (totals.newCount || totals.deletedCount || totals.recoveredCount || totals.downloaded) {
+      if ((totals.newCount || totals.deletedCount || totals.recoveredCount || totals.downloaded) && myViewToken === activeViewToken) {
         renderFoldersView(container, folderId);
       }
     });

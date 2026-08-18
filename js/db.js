@@ -191,6 +191,20 @@ export async function getPhotoCountByFolder(folderId) {
   return wrap(index.count(folderId));
 }
 
+/**
+ * Igual que getPhotoCountByFolder, pero sumando también las fotos de
+ * todas las subcarpetas (en cualquier nivel) — para carpetas "madre" que
+ * solo agrupan otras carpetas (ej. una torre con pisos y deptos adentro)
+ * y no tienen fotos propias directas, así igual muestran cuánto avance
+ * hay adentro de un vistazo.
+ */
+export async function getPhotoCountByFolderRecursive(folderId) {
+  let total = await getPhotoCountByFolder(folderId);
+  const children = await getChildFolders(folderId);
+  const childCounts = await Promise.all(children.map((c) => getPhotoCountByFolderRecursive(c.id)));
+  return total + childCounts.reduce((a, b) => a + b, 0);
+}
+
 export async function updatePhoto(id, changes) {
   const store = await tx('photos', 'readwrite');
   const photo = await wrap(store.get(id));

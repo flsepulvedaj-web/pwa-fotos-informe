@@ -80,7 +80,10 @@ export async function getChildFolders(parentId = ROOT_ID) {
   const store = await tx('folders', 'readonly');
   const index = store.index('by_parentId');
   const results = await wrap(index.getAll(parentId));
-  return results.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  // { numeric: true } ordena "Piso 2" antes que "Piso 10" (como número, no
+  // como texto) — sin esto, "1" es menor que "2" letra por letra y las
+  // carpetas numeradas (casas, deptos, pisos) salían todas desordenadas.
+  return results.sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
 }
 
 export async function updateFolder(id, changes) {
@@ -108,7 +111,7 @@ export async function getAllFolders() {
 export async function getPinnedFolders() {
   const store = await tx('folders', 'readonly');
   const all = await wrap(store.getAll());
-  return all.filter((f) => f.pinned).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return all.filter((f) => f.pinned).sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
 }
 
 export async function deleteFolderRecursive(id) {
@@ -257,7 +260,7 @@ export async function getObra(id) {
 export async function getAllObras() {
   const store = await tx('obras', 'readonly');
   const all = await wrap(store.getAll());
-  return all.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return all.sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
 }
 
 export async function updateObra(id, changes) {

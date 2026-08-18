@@ -1,5 +1,5 @@
 import { buildObraReportPDF, downloadBlob, sanitizeFilename } from '../pdfExport.js';
-import { updatePhoto, updateFolder } from '../db.js';
+import { updatePhoto, updateFolder, getPhotosByFolder } from '../db.js';
 import { escapeHTML, toast } from '../utils.js';
 import { REPORT_FORMATS, getFormatById, fixedLabelFor } from '../reportFormats.js';
 
@@ -12,6 +12,50 @@ function defaultPeriod() {
   } catch {
     return '';
   }
+}
+
+/**
+ * Mini galería para elegir un reemplazo de una foto en la pantalla de
+ * revisión — muestra las demás fotos de la misma carpeta de origen
+ * (candidatos ya viene filtrado: sin la foto actual ni las que ya están
+ * usadas en otra fila). Devuelve el id elegido, o null si se cancela.
+ */
+function photoSwapSheet(candidates, urlByPhotoId) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal photo-swap-sheet" role="dialog" aria-modal="true">
+        <h2>Elegir otra foto</h2>
+        <div class="photo-swap-grid">
+          ${candidates
+            .map(
+              (p) => `
+                <button type="button" class="photo-swap-item" data-photo-id="${p.id}">
+                  <img src="${urlByPhotoId.get(p.id)}" alt="" loading="lazy" />
+                </button>
+              `
+            )
+            .join('')}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" data-action="cancel">Cancelar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    function cleanup(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(null);
+      if (e.target.closest('[data-action="cancel"]')) cleanup(null);
+      const item = e.target.closest('.photo-swap-item');
+      if (item) cleanup(item.dataset.photoId);
+    });
+  });
 }
 
 /**
@@ -81,6 +125,7 @@ export function openExportReviewScreen(photos, folder) {
               <div class="er-reorder">
                 <button type="button" class="er-move-btn" data-dir="up" data-index="${i}" ${i === 0 ? 'disabled' : ''} title="Subir">▲</button>
                 <button type="button" class="er-move-btn" data-dir="down" data-index="${i}" ${i === orderedPhotos.length - 1 ? 'disabled' : ''} title="Bajar">▼</button>
+                <button type="button" class="er-swap-btn" data-index="${i}" title="Cambiar esta foto">🔄</button>
               </div>
               <img src="${url}" alt="Imagen ${i + 1}" loading="lazy" />
               <div class="er-photo-fields">
@@ -111,6 +156,42 @@ export function openExportReviewScreen(photos, folder) {
       const swapWith = btn.dataset.dir === 'up' ? idx - 1 : idx + 1;
       if (swapWith < 0 || swapWith >= orderedPhotos.length) return;
       [orderedPhotos[idx], orderedPhotos[swapWith]] = [orderedPhotos[swapWith], orderedPhotos[idx]];
+      renderList();
+    });
+
+    // "🔄 Cambiar esta foto": ofrece las demás fotos de la MISMA carpeta de
+    // origen de esa foto (photo.folderId, que toda foto real ya trae) —
+    // así Pancho puede reemplazar una que no le gustó sin tener que
+    // cancelar y rehacer toda la selección de nuevo.
+    list.addEventListener('click', async (e) => {
+      const swapBtn = e.target.closest('.er-swap-btn');
+      if (!swapBtn) return;
+      const idx = Number(swapBtn.dataset.index);
+      const currentPhoto = orderedPhotos[idx];
+      if (!currentPhoto.folderId) {
+        toast('Esta foto no tiene una carpeta de origen para elegir otra.');
+        return;
+      }
+      const usedIds = new Set(orderedPhotos.map((p) => p.id));
+      const candidates = (await getPhotosByFolder(currentPhoto.folderId)).filter((p) => !usedIds.has(p.id));
+      if (!candidates.length) {
+        toast('No hay otras fotos disponibles en esa carpeta.');
+        return;
+      }
+      const pickerURLs = new Map();
+      for (const p of candidates) pickerURLs.set(p.id, URL.createObjectURL(p.blob));
+      const chosenId = await photoSwapSheet(candidates, pickerURLs);
+      pickerURLs.forEach((u) => URL.revokeObjectURL(u));
+      if (!chosenId) return;
+      const chosen = candidates.find((p) => p.id === chosenId);
+      // El texto que ya se había escrito para esta fila (si la posición es
+      // libre) se mantiene — es del CASILLERO, no de la foto puntual.
+      if (captionDrafts.has(currentPhoto.id)) {
+        captionDrafts.set(chosen.id, captionDrafts.get(currentPhoto.id));
+        captionDrafts.delete(currentPhoto.id);
+      }
+      objectURLs.set(chosen.id, URL.createObjectURL(chosen.blob));
+      orderedPhotos[idx] = chosen;
       renderList();
     });
 

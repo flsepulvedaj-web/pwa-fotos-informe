@@ -195,8 +195,10 @@ export async function syncPhotosFromDrive(folder) {
  * que el gasto de datos no es problema acá).
  */
 let treeSyncing = false;
+let lastTreeSyncFinishedAt = 0;
+const TREE_SYNC_COOLDOWN_MS = 5000;
 
-export async function syncDriveTreeRecursive(folder) {
+export async function syncDriveTreeRecursive(folder, onProgress) {
   const totals = { newCount: 0, deletedCount: 0, recoveredCount: 0, downloaded: 0, error: null };
   if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return totals;
   // Si Pancho entra y sale rápido de varias carpetas, cada apertura dispara
@@ -204,6 +206,13 @@ export async function syncDriveTreeRecursive(folder) {
   // leer el mismo estado "todavía no bajada" antes de que la primera
   // terminara de guardar, y descargar la misma foto de Drive dos veces.
   if (treeSyncing) return totals;
+  // foldersView.js vuelve a pintar la pantalla apenas termina una sync que
+  // trajo algo nuevo — y ese repintado dispara otra sync automática de
+  // inmediato. Sin este enfriamiento, un árbol grande (varias torres) hacía
+  // dos pasadas completas seguidas por cada apertura de carpeta, el doble
+  // de pedidos a Drive de los necesarios. Una carpeta reabierta a propósito
+  // más de 5 segundos después sigue sincronizando normal.
+  if (Date.now() - lastTreeSyncFinishedAt < TREE_SYNC_COOLDOWN_MS) return totals;
   treeSyncing = true;
 
   async function walk(f) {
@@ -214,6 +223,10 @@ export async function syncDriveTreeRecursive(folder) {
     totals.downloaded += photoResult.downloaded;
     if (folderResult.error) totals.error = folderResult.error;
     if (photoResult.error) totals.error = photoResult.error;
+    // Avisa después de cada carpeta (no solo al final) — en árboles grandes
+    // (varias torres/pisos) esto puede demorar minutos, y sin este aviso
+    // la pantalla parece "pegada" hasta terminar todo.
+    if (onProgress) onProgress({ folder: f, totals });
 
     // Sigue bajando por las subcarpetas enlazadas (las recién creadas
     // arriba también quedan incluidas, porque se leen de nuevo acá).
@@ -227,6 +240,7 @@ export async function syncDriveTreeRecursive(folder) {
     await walk(folder);
   } finally {
     treeSyncing = false;
+    lastTreeSyncFinishedAt = Date.now();
   }
   return totals;
 }

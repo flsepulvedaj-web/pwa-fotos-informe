@@ -195,7 +195,25 @@ export async function renderFoldersView(container, folderId) {
     renderFoldersView(container, folderId);
   });
   if (currentFolder.driveFolderId) {
-    syncDriveTreeRecursive(currentFolder).then((totals) => {
+    // En árboles grandes (varias torres/pisos) esto puede demorar minutos —
+    // sin avisar nada mientras tanto, parece que la app quedó pegada y
+    // Pancho terminaba refrescando la página (lo que en realidad reinicia
+    // la sincronización desde cero). Por eso: un aviso al partir, y la
+    // pantalla se va actualizando sola a medida que van llegando carpetas,
+    // sin interrumpir si está en medio de una selección.
+    let progressNotified = false;
+    let lastProgressRender = Date.now();
+    syncDriveTreeRecursive(currentFolder, () => {
+      if (!progressNotified) {
+        progressNotified = true;
+        toast('🔄 Sincronizando con Drive… puede demorar si hay muchas fotos.');
+      }
+      const now = Date.now();
+      if (now - lastProgressRender > 1500 && !selectMode && !folderSelectMode) {
+        lastProgressRender = now;
+        renderFoldersView(container, folderId);
+      }
+    }).then((totals) => {
       const notices = [];
       if (totals.downloaded) {
         notices.push(`${totals.downloaded} foto${totals.downloaded === 1 ? '' : 's'} nueva${totals.downloaded === 1 ? '' : 's'} desde Drive`);

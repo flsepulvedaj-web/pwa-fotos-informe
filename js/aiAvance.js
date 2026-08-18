@@ -1,4 +1,4 @@
-import { getChildFolders, getPhotosByFolder, getPhotoCountByFolder } from './db.js';
+import { getChildFolders, getPhotosByFolder, getPhotoCountByFolder, getFolder } from './db.js';
 import { downscaleImageBlob, blobToDataURL, escapeHTML, toast } from './utils.js';
 import { signIn } from './googleDrive.js';
 import { openExportReviewScreen } from './views/exportView.js';
@@ -142,6 +142,24 @@ function showLoadingOverlay(message) {
 function updateLoadingMessage(overlay, message) {
   const p = overlay.querySelector('p');
   if (p) p.textContent = message;
+}
+
+/**
+ * Nombre por defecto para el campo "Obra" de un informe combinado. Si
+ * todas las carpetas elegidas comparten la misma carpeta madre (ej. varios
+ * "Piso X TS" adentro de "Torre Sur"), usa el nombre de esa madre — mucho
+ * más corto y sensato que encadenar los 15 nombres de piso uno tras otro
+ * (que además desbordaba el título del PDF). Si no comparten madre, cae de
+ * vuelta a la lista unida con " + " como respaldo. El campo queda editable
+ * igual en la pantalla de revisión, esto es solo el valor inicial.
+ */
+async function pickCombinedName(folders) {
+  const parentIds = new Set(folders.map((f) => f.parentId));
+  if (parentIds.size === 1) {
+    const parent = await getFolder([...parentIds][0]);
+    if (parent?.name) return parent.name;
+  }
+  return folders.map((f) => f.name).join(' + ');
 }
 
 function aiResultSheet({ groupName, ranking, reasoning, substitutions }) {
@@ -376,7 +394,7 @@ export async function openAiAvanceMultiFlow(folders) {
   localStorage.setItem(LAST_FORMAT_KEY, /^piso\s/i.test(succeeded[0].folder.name.trim()) ? 'depto-avance' : 'casas-avance');
 
   const finalPhotos = succeeded.flatMap((r) => r.finalPhotos);
-  const combinedName = succeeded.map((r) => r.folder.name).join(' + ');
+  const combinedName = await pickCombinedName(succeeded.map((r) => r.folder));
 
   await openExportReviewScreen(finalPhotos, { name: combinedName, reportNumber: '', reportPeriod: '' });
 }
@@ -510,7 +528,7 @@ export async function openSameAdvanceMultiFlow(folders) {
   localStorage.setItem(LAST_FORMAT_KEY, /^piso\s/i.test(succeeded[0].folder.name.trim()) ? 'depto-iguales' : 'casas-iguales');
 
   const finalPhotos = succeeded.flatMap((r) => r.finalPhotos);
-  const combinedName = succeeded.map((r) => r.folder.name).join(' + ');
+  const combinedName = await pickCombinedName(succeeded.map((r) => r.folder));
 
   await openExportReviewScreen(finalPhotos, { name: combinedName, reportNumber: '', reportPeriod: '' });
 }

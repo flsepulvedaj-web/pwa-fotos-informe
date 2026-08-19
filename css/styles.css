@@ -56,8 +56,8 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  /* Parche blanco suave detrás del logo: el "LEN REPORTS" del logo es azul
-     marino, que casi no contrasta sobre el fondo oscuro del modo oscuro.
+  /* Parche blanco suave detrás del logo: el texto "Reports" del logo es
+     gris, que casi no contrasta sobre el fondo oscuro del modo oscuro.
      Con este respaldo claro se ve igual de bien en ambos temas. */
   background:
     url("../icons/watermark-logo.png") center center / min(65vw, 300px) no-repeat,

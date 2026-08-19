@@ -2,14 +2,14 @@ import { navigate } from '../router.js';
 
 /**
  * Pantalla de inicio: elegir entre los módulos de la app. Es la primera
- * pantalla que se ve al abrir Len Reports.
+ * pantalla que se ve al abrir Vizor Reports.
  */
 export async function renderHomeView(container) {
   container.innerHTML = `
     <div class="home-view">
       <header class="home-header">
         <img src="icons/icon-192.png" alt="" class="home-logo" />
-        <h1>Len Reports</h1>
+        <h1>Vizor Reports</h1>
       </header>
       <main class="home-modules">
         <button type="button" class="module-card" id="module-fotos">

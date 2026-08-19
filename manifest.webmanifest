@@ -1,13 +1,13 @@
 {
-  "name": "Len Reports",
-  "short_name": "Len Reports",
+  "name": "Vizor Reports",
+  "short_name": "Vizor Reports",
   "description": "Organiza fotos en carpetas y expórtalas como informe PDF, todo offline.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#f4f5f7",
-  "theme_color": "#1c2b4a",
+  "theme_color": "#1b242d",
   "lang": "es",
   "icons": [
     {

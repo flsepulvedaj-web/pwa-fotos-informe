@@ -49,7 +49,7 @@ export async function renderControlObraView(container, obraId) {
   }
 
   const sections = [
-    { id: 'personal', icon: '👷', title: 'Personal en obra', desc: 'Cuántos hay hoy (propio/subcontrato)', ready: true },
+    { id: 'personal', icon: '👷', title: 'Personal en obra', desc: 'Directo, indirecto y subcontratos', ready: true },
     { id: 'checklist', icon: '✅', title: 'Checklist diario', desc: 'SSMA, Faenas y Programación', ready: true },
     { id: 'avance', icon: '📅', title: 'Avance programado', desc: 'Importar programación desde Project', ready: true },
     { id: 'actas', icon: '📝', title: 'Actas de reunión', desc: 'Asistentes, temas, acuerdos', ready: false },

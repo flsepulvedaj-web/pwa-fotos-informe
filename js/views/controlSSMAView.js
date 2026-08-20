@@ -6,6 +6,8 @@ import {
   addSSMAEntry,
   updateSSMAEntry,
   deleteSSMAEntry,
+  ssmaEntryTotal,
+  ssmaEntryBreakdown,
 } from '../db.js';
 import { openFolderPicker, isSignedIn } from '../googleDrive.js';
 import { uploadSSMAEntry, syncSSMAFromDrive } from '../controlSync.js';
@@ -26,11 +28,12 @@ function formatDateEs(iso) {
 }
 
 /**
- * Personal en obra: cuánta gente hay cada día (propio + subcontrato). Un
- * formulario corto para hoy (o cualquier fecha atrasada) + el historial
- * debajo, editable. Si hay una carpeta de Drive vinculada, cada guardado se
- * sube ahí y cada apertura trae lo que haya cargado el resto del equipo
- * (ej. Sergio desde su teléfono) — mismo mecanismo que Avance programado.
+ * Personal en obra: cuánta gente hay cada día, en 3 modalidades (directo,
+ * indirecto, subcontrato). Un formulario corto para hoy (o cualquier fecha
+ * atrasada) + el historial debajo, editable. Si hay una carpeta de Drive
+ * vinculada, cada guardado se sube ahí y cada apertura trae lo que haya
+ * cargado el resto del equipo (ej. Sergio desde su teléfono) — mismo
+ * mecanismo que Avance programado.
  */
 export async function renderControlSSMAView(container, obraId) {
   const obra = await getObra(obraId);
@@ -87,10 +90,13 @@ export async function renderControlSSMAView(container, obraId) {
           <label for="ssma-date">Fecha</label>
           <input type="date" id="ssma-date" required />
 
-          <label for="ssma-propio">Personal propio</label>
-          <input type="number" id="ssma-propio" min="0" step="1" inputmode="numeric" required />
+          <label for="ssma-directo">Personal directo</label>
+          <input type="number" id="ssma-directo" min="0" step="1" inputmode="numeric" required />
 
-          <label for="ssma-sub">Personal subcontrato</label>
+          <label for="ssma-indirecto">Personal indirecto</label>
+          <input type="number" id="ssma-indirecto" min="0" step="1" inputmode="numeric" required />
+
+          <label for="ssma-sub">Subcontratos</label>
           <input type="number" id="ssma-sub" min="0" step="1" inputmode="numeric" required />
 
           <label for="ssma-nota">Nota (opcional)</label>
@@ -105,17 +111,20 @@ export async function renderControlSSMAView(container, obraId) {
         <h2 class="ssma-history-title">Historial</h2>
         ${entries.length ? `
           <section class="ssma-history-list">
-            ${entries.map((e) => `
-              <div class="ssma-history-row">
-                <button type="button" class="ssma-history-main" data-edit-id="${e.id}">
-                  <span class="ssma-history-date">${formatDateEs(e.date)}</span>
-                  <span class="ssma-history-count">👷 ${e.personalPropio + e.personalSubcontrato} en obra</span>
-                  <span class="ssma-history-split">(${e.personalPropio} propio + ${e.personalSubcontrato} subcontrato)</span>
-                  ${e.nota ? `<span class="ssma-history-nota">${escapeHTML(e.nota)}</span>` : ''}
-                </button>
-                <button type="button" class="icon-btn ssma-delete-btn" data-delete-id="${e.id}" title="Eliminar registro">🗑️</button>
-              </div>
-            `).join('')}
+            ${entries.map((e) => {
+              const b = ssmaEntryBreakdown(e);
+              return `
+                <div class="ssma-history-row">
+                  <button type="button" class="ssma-history-main" data-edit-id="${e.id}">
+                    <span class="ssma-history-date">${formatDateEs(e.date)}</span>
+                    <span class="ssma-history-count">👷 ${ssmaEntryTotal(e)} en obra</span>
+                    <span class="ssma-history-split">(${b.directo} directo + ${b.indirecto} indirecto + ${b.subcontrato} subcontrato)</span>
+                    ${e.nota ? `<span class="ssma-history-nota">${escapeHTML(e.nota)}</span>` : ''}
+                  </button>
+                  <button type="button" class="icon-btn ssma-delete-btn" data-delete-id="${e.id}" title="Eliminar registro">🗑️</button>
+                </div>
+              `;
+            }).join('')}
           </section>
         ` : `
           <div class="empty-state">
@@ -147,19 +156,23 @@ export async function renderControlSSMAView(container, obraId) {
     container.querySelector('#btn-check-drive')?.addEventListener('click', () => syncFromDrive({ auto: false }));
 
     const dateInput = container.querySelector('#ssma-date');
-    const propioInput = container.querySelector('#ssma-propio');
+    const directoInput = container.querySelector('#ssma-directo');
+    const indirectoInput = container.querySelector('#ssma-indirecto');
     const subInput = container.querySelector('#ssma-sub');
     const notaInput = container.querySelector('#ssma-nota');
 
     if (editingId) {
       const entry = entries.find((e) => e.id === editingId);
+      const b = ssmaEntryBreakdown(entry);
       dateInput.value = entry.date;
-      propioInput.value = entry.personalPropio;
-      subInput.value = entry.personalSubcontrato;
+      directoInput.value = b.directo;
+      indirectoInput.value = b.indirecto;
+      subInput.value = b.subcontrato;
       notaInput.value = entry.nota || '';
     } else {
       dateInput.value = todayLocalISO();
-      propioInput.value = '';
+      directoInput.value = '';
+      indirectoInput.value = '';
       subInput.value = '';
       notaInput.value = '';
     }
@@ -175,7 +188,8 @@ export async function renderControlSSMAView(container, obraId) {
     container.querySelector('#ssma-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const date = dateInput.value;
-      const personalPropio = Math.max(0, parseInt(propioInput.value, 10) || 0);
+      const personalDirecto = Math.max(0, parseInt(directoInput.value, 10) || 0);
+      const personalIndirecto = Math.max(0, parseInt(indirectoInput.value, 10) || 0);
       const personalSubcontrato = Math.max(0, parseInt(subInput.value, 10) || 0);
       const nota = notaInput.value.trim();
 
@@ -186,7 +200,7 @@ export async function renderControlSSMAView(container, obraId) {
 
       let saved;
       if (editingId) {
-        saved = await updateSSMAEntry(editingId, { date, personalPropio, personalSubcontrato, nota });
+        saved = await updateSSMAEntry(editingId, { date, personalDirecto, personalIndirecto, personalSubcontrato, nota });
         toast('Registro actualizado.');
         editingId = null;
       } else {
@@ -194,10 +208,10 @@ export async function renderControlSSMAView(container, obraId) {
         // duplicarlo (por si Pancho carga dos veces el mismo día sin querer).
         const existing = await getSSMAEntryByObraAndDate(obraId, date);
         if (existing) {
-          saved = await updateSSMAEntry(existing.id, { personalPropio, personalSubcontrato, nota });
+          saved = await updateSSMAEntry(existing.id, { personalDirecto, personalIndirecto, personalSubcontrato, nota });
           toast(`Ya había un registro para el ${formatDateEs(date)} — se actualizó.`);
         } else {
-          saved = await addSSMAEntry({ obraId, date, personalPropio, personalSubcontrato, nota });
+          saved = await addSSMAEntry({ obraId, date, personalDirecto, personalIndirecto, personalSubcontrato, nota });
           toast('Registro guardado.');
         }
       }

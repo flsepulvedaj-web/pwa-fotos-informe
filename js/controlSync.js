@@ -15,6 +15,7 @@ import {
   getSSMAEntryByObraAndDate,
   addSSMAEntry,
   updateSSMAEntry,
+  ssmaEntryBreakdown,
   getChecklistTypesByObra,
   createChecklistType,
   getChecklistEntryByTypeAndDate,
@@ -75,10 +76,12 @@ async function readJSONFile(fileId) {
 export async function uploadSSMAEntry(folderId, entry) {
   if (!folderId) return;
   try {
+    const b = ssmaEntryBreakdown(entry);
     await uploadJSON(folderId, `${entry.date}.json`, {
       date: entry.date,
-      personalPropio: entry.personalPropio,
-      personalSubcontrato: entry.personalSubcontrato,
+      personalDirecto: b.directo,
+      personalIndirecto: b.indirecto,
+      personalSubcontrato: b.subcontrato,
       nota: entry.nota,
       updatedAt: entry.updatedAt,
     });
@@ -108,12 +111,15 @@ export async function syncSSMAFromDrive(obraId, folderId) {
       console.error(`No se pudo leer ${file.name} de Drive:`, err);
       continue;
     }
+    // ssmaEntryBreakdown tolera archivos viejos en Drive (de antes de
+    // separar directo/indirecto) que todavía traigan solo "personalPropio".
+    const b = ssmaEntryBreakdown(data);
     const local = await getSSMAEntryByObraAndDate(obraId, date);
     if (!local) {
-      await addSSMAEntry({ obraId, date: data.date, personalPropio: data.personalPropio, personalSubcontrato: data.personalSubcontrato, nota: data.nota, updatedAt: data.updatedAt });
+      await addSSMAEntry({ obraId, date: data.date, personalDirecto: b.directo, personalIndirecto: b.indirecto, personalSubcontrato: b.subcontrato, nota: data.nota, updatedAt: data.updatedAt });
       changed++;
     } else if ((local.updatedAt || 0) < (data.updatedAt || 0)) {
-      await updateSSMAEntry(local.id, { personalPropio: data.personalPropio, personalSubcontrato: data.personalSubcontrato, nota: data.nota }, { updatedAt: data.updatedAt });
+      await updateSSMAEntry(local.id, { personalDirecto: b.directo, personalIndirecto: b.indirecto, personalSubcontrato: b.subcontrato, nota: data.nota }, { updatedAt: data.updatedAt });
       changed++;
     }
   }

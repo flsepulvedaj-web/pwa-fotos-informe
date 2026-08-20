@@ -53,6 +53,14 @@ function isAtrasada(task) {
   return parseLocalDate(task.plannedEnd) < today && task.plannedPercent < 100;
 }
 
+// La programación se sube una vez por semana (martes) — si pasaron más de
+// 8 días desde la última, probablemente se saltaron una subida.
+const DAYS_STALE_WARNING = 8;
+
+function daysSince(ts) {
+  return Math.floor((Date.now() - ts) / 86400000);
+}
+
 function countAtrasadasInside(node) {
   let count = isAtrasada(node.task) ? 1 : 0;
   for (const child of node.children) count += countAtrasadasInside(child);
@@ -200,6 +208,9 @@ export async function renderControlAvanceView(container, obraId) {
           <section class="avance-summary">
             <div class="avance-percent">${selected.overallPercent}%</div>
             <div class="avance-percent-label">avance general</div>
+            <div class="avance-updated-label${daysSince(selected.uploadedAt) > DAYS_STALE_WARNING ? ' avance-updated-stale' : ''}">
+              Última programación: hace ${daysSince(selected.uploadedAt)} día(s)${daysSince(selected.uploadedAt) > DAYS_STALE_WARNING ? ' ⚠️ revisá si se subió la de esta semana' : ''}
+            </div>
             ${atrasadas ? `<div class="checklist-alert">⚠️ ${atrasadas} tarea(s) atrasada(s)</div>` : ''}
           </section>
 

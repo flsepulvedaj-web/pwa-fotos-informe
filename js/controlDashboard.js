@@ -1,6 +1,7 @@
 // Lógica pura del dashboard de KPI del módulo Control — separada de la
 // vista (controlObraView.js) para poder probarla sola, mismo patrón que
 // aiAvance.js.
+import { ssmaEntryTotal } from './db.js';
 
 const DAY_MS = 86400000;
 
@@ -27,8 +28,8 @@ export function computePersonalKPI(ssmaEntries) {
   const today = todayLocalISO();
   const todayEntry = sorted.find((e) => e.date === today);
   return {
-    todayTotal: todayEntry ? todayEntry.personalPropio + todayEntry.personalSubcontrato : null,
-    history: sorted.slice(-14).map((e) => ({ date: e.date, total: e.personalPropio + e.personalSubcontrato })),
+    todayTotal: todayEntry ? ssmaEntryTotal(todayEntry) : null,
+    history: sorted.slice(-14).map((e) => ({ date: e.date, total: ssmaEntryTotal(e) })),
   };
 }
 

@@ -447,14 +447,15 @@ export async function deleteScheduleSnapshot(id) {
 
 // ---------- Control: SSMA (personal en obra por día) ----------
 
-export async function addSSMAEntry({ obraId, date, personalPropio = 0, personalSubcontrato = 0, nota = '', updatedAt }) {
+export async function addSSMAEntry({ obraId, date, personalDirecto = 0, personalIndirecto = 0, personalSubcontrato = 0, nota = '', updatedAt }) {
   const store = await tx('controlSSMA', 'readwrite');
   const now = Date.now();
   const entry = {
     id: uuid(),
     obraId,
     date, // 'YYYY-MM-DD'
-    personalPropio,
+    personalDirecto,
+    personalIndirecto,
     personalSubcontrato,
     nota,
     createdAt: now,
@@ -462,6 +463,30 @@ export async function addSSMAEntry({ obraId, date, personalPropio = 0, personalS
   };
   await wrap(store.add(entry));
   return entry;
+}
+
+/**
+ * Total de personal de un registro, tolerante a registros viejos (antes de
+ * separar Directo/Indirecto, todo se guardaba junto en "personalPropio").
+ */
+export function ssmaEntryTotal(entry) {
+  if (!entry) return 0;
+  if (entry.personalDirecto !== undefined || entry.personalIndirecto !== undefined) {
+    return (entry.personalDirecto || 0) + (entry.personalIndirecto || 0) + (entry.personalSubcontrato || 0);
+  }
+  return (entry.personalPropio || 0) + (entry.personalSubcontrato || 0);
+}
+
+/** Ídem, separado por categoría — un registro viejo pone todo en "directo". */
+export function ssmaEntryBreakdown(entry) {
+  if (entry.personalDirecto !== undefined || entry.personalIndirecto !== undefined) {
+    return {
+      directo: entry.personalDirecto || 0,
+      indirecto: entry.personalIndirecto || 0,
+      subcontrato: entry.personalSubcontrato || 0,
+    };
+  }
+  return { directo: entry.personalPropio || 0, indirecto: 0, subcontrato: entry.personalSubcontrato || 0 };
 }
 
 export async function getSSMAEntriesByObra(obraId) {

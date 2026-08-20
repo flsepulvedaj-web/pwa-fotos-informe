@@ -69,14 +69,22 @@ export async function renderControlAvanceView(container, obraId) {
   let snapshots = await getScheduleSnapshotsByObra(obraId);
   let selectedSnapshotId = snapshots[0]?.id || null;
 
-  async function importCSVText(text, { driveFileId = null, driveFileName = null } = {}) {
+  async function importCSVText(text, { driveFileId = null, driveFileName = null, uploadedAt } = {}) {
     const { tasks, overallPercent } = parseScheduleCSV(text);
-    const snapshot = await addScheduleSnapshot({ obraId, tasks, overallPercent, driveFileId, driveFileName });
+    const snapshot = await addScheduleSnapshot({ obraId, tasks, overallPercent, driveFileId, driveFileName, ...(uploadedAt ? { uploadedAt } : {}) });
     snapshots = await getScheduleSnapshotsByObra(obraId);
     selectedSnapshotId = snapshot.id;
     return { tasks, overallPercent };
   }
 
+  /**
+   * Trae TODOS los .csv de la carpeta que todavía no se hayan importado (no
+   * solo el más nuevo) — Pancho va dejando un archivo nuevo por revisión
+   * ("Prog rev DD-MM-YYYY.csv"), así que cada uno es un punto real del
+   * historial de avance, no un reemplazo del anterior. Cada snapshot usa la
+   * fecha de modificación del archivo en Drive, no el momento de la
+   * importación, para que el historial quede ordenado por revisión real.
+   */
   async function checkDriveForNewProgramacion({ auto }) {
     if (!obra.programacionDriveFolderId) return;
     try {
@@ -85,16 +93,29 @@ export async function renderControlAvanceView(container, obraId) {
         if (!auto) toast('No hay ningún archivo .csv en esa carpeta de Drive todavía.');
         return;
       }
-      const newest = files[0]; // listDriveCsvFiles ya ordena por modifiedTime desc
-      const alreadyImported = snapshots.some((s) => s.driveFileId === newest.id);
-      if (alreadyImported) {
-        if (!auto) toast('Ya tenés cargada la programación más reciente de esa carpeta.');
+      const pending = files
+        .filter((f) => !snapshots.some((s) => s.driveFileId === f.id))
+        .sort((a, b) => new Date(a.modifiedTime) - new Date(b.modifiedTime));
+
+      if (!pending.length) {
+        if (!auto) toast('Ya tenés cargadas todas las programaciones de esa carpeta.');
         return;
       }
-      const blob = await downloadDriveFile(newest.id);
-      const text = await readTextSmart(new File([blob], newest.name));
-      const { overallPercent } = await importCSVText(text, { driveFileId: newest.id, driveFileName: newest.name });
-      toast(`📥 Nueva programación desde Drive: ${overallPercent}% de avance (${newest.name}).`);
+
+      let lastPercent = null;
+      for (const file of pending) {
+        const blob = await downloadDriveFile(file.id);
+        const text = await readTextSmart(new File([blob], file.name));
+        const result = await importCSVText(text, {
+          driveFileId: file.id,
+          driveFileName: file.name,
+          uploadedAt: new Date(file.modifiedTime).getTime(),
+        });
+        lastPercent = result.overallPercent;
+      }
+      toast(pending.length === 1
+        ? `📥 Nueva programación desde Drive: ${lastPercent}% de avance (${pending[0].name}).`
+        : `📥 ${pending.length} programaciones nuevas importadas desde Drive.`);
       paint();
     } catch (err) {
       console.error('Error buscando programación en Drive:', err);

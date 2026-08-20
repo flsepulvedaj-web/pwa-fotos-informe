@@ -412,12 +412,16 @@ export async function deleteProtocolPhoto(id) {
 
 // ---------- Control: Programación (snapshots de avance importados) ----------
 
-export async function addScheduleSnapshot({ obraId, tasks, overallPercent, driveFileId = null, driveFileName = null }) {
+export async function addScheduleSnapshot({ obraId, tasks, overallPercent, driveFileId = null, driveFileName = null, uploadedAt = Date.now() }) {
   const store = await tx('controlSchedule', 'readwrite');
   const snapshot = {
     id: uuid(),
     obraId,
-    uploadedAt: Date.now(),
+    // Para archivos que vienen de Drive se usa la fecha de modificación del
+    // archivo (no el momento en que la app lo detectó) — así el historial
+    // de avance queda ordenado por cuándo se hizo cada revisión de verdad,
+    // no por cuándo Pancho abrió la app para que la trajera.
+    uploadedAt,
     tasks, // [{ name, plannedStart, plannedEnd, plannedPercent, actualPercent }]
     overallPercent,
     // Si este snapshot vino de Drive (no de subida manual), se guarda el id

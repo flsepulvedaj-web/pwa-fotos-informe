@@ -1,5 +1,5 @@
 import { getObra, updateObra, addScheduleSnapshot, getScheduleSnapshotsByObra, deleteScheduleSnapshot } from '../db.js';
-import { parseScheduleCSV } from '../controlScheduleParser.js';
+import { parseScheduleCSV, buildTaskTree } from '../controlScheduleParser.js';
 import { openFolderPicker, listDriveCsvFiles, downloadDriveFile } from '../googleDrive.js';
 import { navigate } from '../router.js';
 import { escapeHTML, confirmDialog, toast } from '../utils.js';
@@ -52,6 +52,56 @@ function isAtrasada(task) {
   return parseLocalDate(task.plannedEnd) < today && task.plannedPercent < 100;
 }
 
+function countAtrasadasInside(node) {
+  let count = isAtrasada(node.task) ? 1 : 0;
+  for (const child of node.children) count += countAtrasadasInside(child);
+  return count;
+}
+
+/** Colapsado por defecto: el nivel raíz queda abierto (se ven las partidas
+ * principales de un vistazo), todo lo que está más adentro arranca cerrado
+ * — así la tabla parte mostrando un resumen, no las ~130 tareas sueltas. */
+function defaultCollapsedSet(tree) {
+  const collapsed = new Set();
+  function walk(nodes, depth) {
+    for (const node of nodes) {
+      if (node.children.length && depth >= 1) collapsed.add(node.index);
+      walk(node.children, depth + 1);
+    }
+  }
+  walk(tree, 0);
+  return collapsed;
+}
+
+function renderTaskTreeRows(nodes, depth, collapsedSet) {
+  return nodes.map((node) => {
+    const hasChildren = node.children.length > 0;
+    const collapsed = collapsedSet.has(node.index);
+    const atrasadasInside = hasChildren && collapsed ? countAtrasadasInside(node) : 0;
+    const rowClasses = [
+      isAtrasada(node.task) ? 'avance-row-atrasada' : '',
+      hasChildren ? 'avance-row-summary' : '',
+    ].filter(Boolean).join(' ');
+
+    let html = `
+      <tr class="${rowClasses}">
+        <td style="padding-left:${depth * 16 + 10}px">
+          ${hasChildren ? `<button type="button" class="avance-toggle-btn" data-toggle-index="${node.index}">${collapsed ? '▶' : '▼'}</button>` : ''}
+          ${escapeHTML(node.task.name)}
+          ${atrasadasInside ? `<span class="avance-badge-atrasada">⚠️ ${atrasadasInside}</span>` : ''}
+        </td>
+        <td>${formatDateEs(node.task.plannedStart)}</td>
+        <td>${formatDateEs(node.task.plannedEnd)}</td>
+        <td>${node.task.plannedPercent}%</td>
+      </tr>
+    `;
+    if (hasChildren && !collapsed) {
+      html += renderTaskTreeRows(node.children, depth + 1, collapsedSet);
+    }
+    return html;
+  }).join('');
+}
+
 /**
  * Avance programado: se importa la programación como CSV exportado de
  * Project, ya sea subiéndolo a mano o vinculando una carpeta de Drive donde
@@ -68,6 +118,17 @@ export async function renderControlAvanceView(container, obraId) {
 
   let snapshots = await getScheduleSnapshotsByObra(obraId);
   let selectedSnapshotId = snapshots[0]?.id || null;
+  let tree = [];
+  let collapsedSet = new Set();
+  let treeBuiltForId = null; // evita reconstruir (y resetear los ▶/▼ abiertos) en cada repintado
+
+  function ensureTreeForSelection() {
+    if (treeBuiltForId === selectedSnapshotId) return;
+    const selected = snapshots.find((s) => s.id === selectedSnapshotId);
+    tree = selected ? buildTaskTree(selected.tasks) : [];
+    collapsedSet = defaultCollapsedSet(tree);
+    treeBuiltForId = selectedSnapshotId;
+  }
 
   async function importCSVText(text, { driveFileId = null, driveFileName = null, uploadedAt } = {}) {
     const { tasks, overallPercent } = parseScheduleCSV(text);
@@ -124,6 +185,7 @@ export async function renderControlAvanceView(container, obraId) {
   }
 
   function paint() {
+    ensureTreeForSelection();
     const selected = snapshots.find((s) => s.id === selectedSnapshotId);
     const atrasadas = selected ? selected.tasks.filter(isAtrasada).length : 0;
 
@@ -166,20 +228,14 @@ export async function renderControlAvanceView(container, obraId) {
             <button type="button" class="icon-btn" id="btn-delete-snapshot" title="Eliminar esta programación">🗑️</button>
           </div>
 
+          <p class="avance-tree-hint">Negrita = partida principal (agrupa las tareas de abajo). Tocá ▶ para abrir el detalle.</p>
           <div class="avance-table-wrap">
             <table class="avance-table">
               <thead>
                 <tr><th>Tarea</th><th>Inicio</th><th>Fin</th><th>%</th></tr>
               </thead>
               <tbody>
-                ${selected.tasks.map((t) => `
-                  <tr class="${isAtrasada(t) ? 'avance-row-atrasada' : ''}">
-                    <td>${escapeHTML(t.name)}</td>
-                    <td>${formatDateEs(t.plannedStart)}</td>
-                    <td>${formatDateEs(t.plannedEnd)}</td>
-                    <td>${t.plannedPercent}%</td>
-                  </tr>
-                `).join('')}
+                ${renderTaskTreeRows(tree, 0, collapsedSet)}
               </tbody>
             </table>
           </div>
@@ -232,6 +288,15 @@ export async function renderControlAvanceView(container, obraId) {
 
     container.querySelector('#avance-snapshot-select')?.addEventListener('change', (e) => {
       selectedSnapshotId = e.target.value;
+      paint();
+    });
+
+    container.querySelector('.avance-table-wrap')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.avance-toggle-btn');
+      if (!btn) return;
+      const idx = Number(btn.dataset.toggleIndex);
+      if (collapsedSet.has(idx)) collapsedSet.delete(idx);
+      else collapsedSet.add(idx);
       paint();
     });
 

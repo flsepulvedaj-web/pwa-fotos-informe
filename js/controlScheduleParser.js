@@ -171,3 +171,43 @@ export function parseScheduleCSV(text) {
 
   return { tasks, overallPercent: Math.round(overallPercent * 10) / 10 };
 }
+
+/**
+ * Arma un árbol de partidas a partir de la lista plana de tareas, usando
+ * únicamente las fechas (el CSV de Project no trae el nivel de esquema/
+ * indentación) — una tarea es "partida principal" cuando su rango de
+ * fechas contiene por completo el de las tareas que le siguen, mismo orden
+ * en que Project las exporta (padre, después sus hijas, después la
+ * siguiente partida). Si el CSV alguna vez trae una columna de nivel de
+ * esquema, se puede reemplazar esto por algo más directo — por ahora
+ * funciona bien porque Project exporta siempre en orden de esquema.
+ *
+ * No se marcan "hitos" por duración (fecha inicio = fecha fin): en la
+ * práctica, la mayoría de las tareas de 1 día de una programación real son
+ * tareas cortas comunes, no hitos de verdad — marcarlas todas en negrita
+ * termina destacando casi todo y no sirve de nada. Detectar hitos de
+ * verdad necesitaría la columna "Hito"/"Duración" del export de Project.
+ */
+export function buildTaskTree(tasks) {
+  function contains(parent, child) {
+    if (!parent.plannedStart || !parent.plannedEnd || !child.plannedStart || !child.plannedEnd) return false;
+    if (parent.plannedStart === child.plannedStart && parent.plannedEnd === child.plannedEnd) return false;
+    return parent.plannedStart <= child.plannedStart && parent.plannedEnd >= child.plannedEnd;
+  }
+
+  const roots = [];
+  const stack = []; // [{ task, node }]
+  tasks.forEach((task, index) => {
+    const node = { task, index, children: [] };
+    while (stack.length && !contains(stack[stack.length - 1].task, task)) {
+      stack.pop();
+    }
+    if (stack.length) {
+      stack[stack.length - 1].node.children.push(node);
+    } else {
+      roots.push(node);
+    }
+    stack.push({ task, node });
+  });
+  return roots;
+}

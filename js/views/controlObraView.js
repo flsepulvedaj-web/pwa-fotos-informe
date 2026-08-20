@@ -17,9 +17,9 @@ export async function renderControlObraView(container, obraId) {
   }
 
   const sections = [
-    { id: 'ssma', icon: '👷', title: 'SSMA', desc: 'Personal en obra por día', ready: true },
-    { id: 'checklist', icon: '✅', title: 'Checklist diario', desc: 'Cumplimiento + fotos del día', ready: false },
-    { id: 'programacion', icon: '📅', title: 'Programación', desc: 'Avance planificado vs. real', ready: false },
+    { id: 'personal', icon: '👷', title: 'Personal en obra', desc: 'Cuántos hay hoy (propio/subcontrato)', ready: true },
+    { id: 'checklist', icon: '✅', title: 'Checklist diario', desc: 'SSMA, Faenas y Programación', ready: true },
+    { id: 'avance', icon: '📅', title: 'Avance programado', desc: 'Importar programación desde Project', ready: false },
     { id: 'actas', icon: '📝', title: 'Actas de reunión', desc: 'Asistentes, temas, acuerdos', ready: false },
   ];
 
@@ -46,8 +46,10 @@ export async function renderControlObraView(container, obraId) {
   container.querySelectorAll('.control-section-card').forEach((card) => {
     card.addEventListener('click', () => {
       const section = card.dataset.section;
-      if (section === 'ssma') {
-        navigate(`/control/obra/${obraId}/ssma`);
+      if (section === 'personal') {
+        navigate(`/control/obra/${obraId}/personal`);
+      } else if (section === 'checklist') {
+        navigate(`/control/obra/${obraId}/checklist`);
       }
       // Las demás secciones todavía no tienen vista — no hacen nada al
       // tocarlas (quedan visibles para mostrar el mapa completo del módulo).

@@ -12,6 +12,7 @@ import { renderProtocolDraftsView } from './views/protocolDraftsView.js';
 import { renderControlHomeView } from './views/controlHomeView.js';
 import { renderControlObraView } from './views/controlObraView.js';
 import { renderControlSSMAView } from './views/controlSSMAView.js';
+import { renderControlChecklistView } from './views/controlChecklistView.js';
 
 const appEl = document.getElementById('app');
 
@@ -34,7 +35,8 @@ registerRoute('/protocolos/instancia/:id', ({ id }) => renderProtocolFormView(ap
 // Módulo Control (programación, checklist diario, SSMA, actas, KPI).
 registerRoute('/control', () => renderControlHomeView(appEl));
 registerRoute('/control/obra/:obraId', ({ obraId }) => renderControlObraView(appEl, obraId));
-registerRoute('/control/obra/:obraId/ssma', ({ obraId }) => renderControlSSMAView(appEl, obraId));
+registerRoute('/control/obra/:obraId/personal', ({ obraId }) => renderControlSSMAView(appEl, obraId));
+registerRoute('/control/obra/:obraId/checklist', ({ obraId }) => renderControlChecklistView(appEl, obraId));
 
 registerNotFound(() => navigate('/'));
 

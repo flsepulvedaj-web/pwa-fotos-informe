@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -51,9 +51,25 @@ function openDB() {
         controlSchedule.createIndex('by_obraId', 'obraId', { unique: false });
       }
 
+      if (!db.objectStoreNames.contains('controlChecklistTypes')) {
+        const controlChecklistTypes = db.createObjectStore('controlChecklistTypes', { keyPath: 'id' });
+        controlChecklistTypes.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      // Store separada del `if` de arriba (a diferencia del resto de este
+      // archivo) porque este índice se agregó en una versión posterior a la
+      // que creó la store — sin este manejo aparte, una base que ya tenía
+      // 'controlChecklists' (sin el índice nuevo) se saltaría el bloque
+      // entero y se quedaría sin 'by_typeId' para siempre.
+      let controlChecklists;
       if (!db.objectStoreNames.contains('controlChecklists')) {
-        const controlChecklists = db.createObjectStore('controlChecklists', { keyPath: 'id' });
+        controlChecklists = db.createObjectStore('controlChecklists', { keyPath: 'id' });
         controlChecklists.createIndex('by_obraId', 'obraId', { unique: false });
+      } else {
+        controlChecklists = req.transaction.objectStore('controlChecklists');
+      }
+      if (!controlChecklists.indexNames.contains('by_typeId')) {
+        controlChecklists.createIndex('by_typeId', 'checklistTypeId', { unique: false });
       }
 
       if (!db.objectStoreNames.contains('controlChecklistPhotos')) {
@@ -435,5 +451,122 @@ export async function updateSSMAEntry(id, changes) {
 
 export async function deleteSSMAEntry(id) {
   const store = await tx('controlSSMA', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Control: tipos de checklist (por obra) ----------
+//
+// Cada obra tiene su propia lista de "tipos" de checklist diario (por
+// defecto: SSMA, Faenas Diarias, Programación — sacados del formato Excel
+// real que ya usa el equipo). Los ítems de cada tipo son editables: Faenas
+// Diarias en particular cambia según la etapa de la obra (excavaciones,
+// hormigones, terminaciones…), así que cada obra puede ajustar su lista.
+
+export async function createChecklistType({ obraId, key, title, items, order = 0 }) {
+  const store = await tx('controlChecklistTypes', 'readwrite');
+  const type = {
+    id: uuid(),
+    obraId,
+    key, // 'ssma' | 'faenas' | 'programacion' | custom
+    title,
+    // Orden de la pestaña (SSMA, Faenas, Programación…) — no se puede usar
+    // `createdAt` para esto: los 3 tipos por defecto se crean en paralelo
+    // (Promise.all) y caen en el mismo milisegundo, así que sin este campo
+    // el orden de las pestañas salía distinto en cada recarga.
+    order,
+    items: items.map((it) => ({ id: uuid(), label: it.label, nota: it.nota || '' })),
+    createdAt: Date.now(),
+  };
+  await wrap(store.add(type));
+  return type;
+}
+
+export async function getChecklistTypesByObra(obraId) {
+  const store = await tx('controlChecklistTypes', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.createdAt - b.createdAt);
+}
+
+export async function updateChecklistType(id, changes) {
+  const store = await tx('controlChecklistTypes', 'readwrite');
+  const type = await wrap(store.get(id));
+  if (!type) return null;
+  Object.assign(type, changes);
+  await wrap(store.put(type));
+  return type;
+}
+
+// ---------- Control: checklist diario (instancias por día) ----------
+
+export async function addChecklistEntry({ obraId, checklistTypeId, date, items }) {
+  const store = await tx('controlChecklists', 'readwrite');
+  const entry = {
+    id: uuid(),
+    obraId,
+    checklistTypeId,
+    date, // 'YYYY-MM-DD'
+    // Copia (snapshot) de los ítems del tipo al momento de crear el
+    // checklist del día — si más adelante se edita la lista del tipo, los
+    // días ya cargados no cambian solos.
+    items: items.map((it) => ({ itemId: it.id, label: it.label, nota: it.nota || '', status: null })),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  await wrap(store.add(entry));
+  return entry;
+}
+
+export async function getChecklistEntriesByType(checklistTypeId) {
+  const store = await tx('controlChecklists', 'readonly');
+  const index = store.index('by_typeId');
+  const results = await wrap(index.getAll(checklistTypeId));
+  return results.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function getChecklistEntry(id) {
+  const store = await tx('controlChecklists', 'readonly');
+  return wrap(store.get(id));
+}
+
+export async function getChecklistEntryByTypeAndDate(checklistTypeId, date) {
+  const entries = await getChecklistEntriesByType(checklistTypeId);
+  return entries.find((e) => e.date === date) || null;
+}
+
+export async function updateChecklistEntry(id, changes) {
+  const store = await tx('controlChecklists', 'readwrite');
+  const entry = await wrap(store.get(id));
+  if (!entry) return null;
+  Object.assign(entry, changes, { updatedAt: Date.now() });
+  await wrap(store.put(entry));
+  return entry;
+}
+
+export async function deleteChecklistEntry(id) {
+  const photos = await getChecklistPhotosByEntry(id);
+  for (const photo of photos) {
+    await deleteChecklistPhoto(photo.id);
+  }
+  const store = await tx('controlChecklists', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+export async function addChecklistPhoto({ checklistId, blob }) {
+  const store = await tx('controlChecklistPhotos', 'readwrite');
+  const photo = { id: uuid(), checklistId, blob, createdAt: Date.now() };
+  await wrap(store.add(photo));
+  return photo;
+}
+
+export async function getChecklistPhotosByEntry(checklistId) {
+  const store = await tx('controlChecklistPhotos', 'readonly');
+  const index = store.index('by_checklistId');
+  const results = await wrap(index.getAll(checklistId));
+  return results.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function deleteChecklistPhoto(id) {
+  const store = await tx('controlChecklistPhotos', 'readwrite');
   await wrap(store.delete(id));
 }

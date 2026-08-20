@@ -41,7 +41,7 @@ export async function renderControlSSMAView(container, obraId) {
     container.innerHTML = `
       <header class="app-header">
         <button class="icon-btn" id="btn-back" title="Volver">←</button>
-        <span class="header-title">SSMA — ${escapeHTML(obra.name)}</span>
+        <span class="header-title">Personal en obra — ${escapeHTML(obra.name)}</span>
       </header>
       <main class="view-content">
         <form class="ssma-form" id="ssma-form">

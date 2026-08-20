@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -42,6 +42,33 @@ function openDB() {
       if (!db.objectStoreNames.contains('protocolPhotos')) {
         const protocolPhotos = db.createObjectStore('protocolPhotos', { keyPath: 'id' });
         protocolPhotos.createIndex('by_instanceId', 'instanceId', { unique: false });
+      }
+
+      // Módulo Control (v3): programación, checklist diario, SSMA y actas —
+      // todos cuelgan de la misma obra que ya usa Protocolos (by_obraId).
+      if (!db.objectStoreNames.contains('controlSchedule')) {
+        const controlSchedule = db.createObjectStore('controlSchedule', { keyPath: 'id' });
+        controlSchedule.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('controlChecklists')) {
+        const controlChecklists = db.createObjectStore('controlChecklists', { keyPath: 'id' });
+        controlChecklists.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('controlChecklistPhotos')) {
+        const controlChecklistPhotos = db.createObjectStore('controlChecklistPhotos', { keyPath: 'id' });
+        controlChecklistPhotos.createIndex('by_checklistId', 'checklistId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('controlSSMA')) {
+        const controlSSMA = db.createObjectStore('controlSSMA', { keyPath: 'id' });
+        controlSSMA.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('controlActas')) {
+        const controlActas = db.createObjectStore('controlActas', { keyPath: 'id' });
+        controlActas.createIndex('by_obraId', 'obraId', { unique: false });
       }
     };
 
@@ -364,5 +391,49 @@ export async function getProtocolPhotosByInstance(instanceId) {
 
 export async function deleteProtocolPhoto(id) {
   const store = await tx('protocolPhotos', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Control: SSMA (personal en obra por día) ----------
+
+export async function addSSMAEntry({ obraId, date, personalPropio = 0, personalSubcontrato = 0, nota = '' }) {
+  const store = await tx('controlSSMA', 'readwrite');
+  const entry = {
+    id: uuid(),
+    obraId,
+    date, // 'YYYY-MM-DD'
+    personalPropio,
+    personalSubcontrato,
+    nota,
+    createdAt: Date.now(),
+  };
+  await wrap(store.add(entry));
+  return entry;
+}
+
+export async function getSSMAEntriesByObra(obraId) {
+  const store = await tx('controlSSMA', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  // Más reciente primero.
+  return results.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function getSSMAEntryByObraAndDate(obraId, date) {
+  const entries = await getSSMAEntriesByObra(obraId);
+  return entries.find((e) => e.date === date) || null;
+}
+
+export async function updateSSMAEntry(id, changes) {
+  const store = await tx('controlSSMA', 'readwrite');
+  const entry = await wrap(store.get(id));
+  if (!entry) return null;
+  Object.assign(entry, changes);
+  await wrap(store.put(entry));
+  return entry;
+}
+
+export async function deleteSSMAEntry(id) {
+  const store = await tx('controlSSMA', 'readwrite');
   await wrap(store.delete(id));
 }

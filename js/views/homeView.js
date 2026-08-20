@@ -22,10 +22,16 @@ export async function renderHomeView(container) {
           <span class="module-title">Protocolos</span>
           <span class="module-desc">Checklist de calidad + firma digital</span>
         </button>
+        <button type="button" class="module-card" id="module-control">
+          <span class="module-icon">🎛️</span>
+          <span class="module-title">Control</span>
+          <span class="module-desc">Programación, SSMA, actas y KPI de obra</span>
+        </button>
       </main>
     </div>
   `;
 
   container.querySelector('#module-fotos').addEventListener('click', () => navigate('/fotos'));
   container.querySelector('#module-protocolos').addEventListener('click', () => navigate('/protocolos'));
+  container.querySelector('#module-control').addEventListener('click', () => navigate('/control'));
 }

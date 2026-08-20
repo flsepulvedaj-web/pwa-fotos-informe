@@ -1768,3 +1768,148 @@ button {
   left: 8px;
   font-size: 13px;
 }
+
+/* ---------- Control: secciones de una obra ---------- */
+
+.control-section-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.control-section-card {
+  width: 100%;
+}
+
+.control-section-soon {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.control-section-soon:active {
+  transform: none;
+}
+
+/* ---------- Control: SSMA ---------- */
+
+.ssma-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  margin: 0 16px 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+
+.ssma-form h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  color: var(--color-text);
+}
+
+.ssma-form label {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-bottom: -6px;
+}
+
+.ssma-form input,
+.ssma-form textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 15px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+}
+
+.ssma-form textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.ssma-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ssma-history-title {
+  margin: 0 16px 8px;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.ssma-history-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px;
+  gap: 10px;
+}
+
+.ssma-history-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.ssma-history-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+
+.ssma-history-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.ssma-history-count {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ssma-history-split {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.ssma-history-nota {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.ssma-delete-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin-right: 6px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  cursor: pointer;
+}

@@ -2005,8 +2005,27 @@ button {
 
 /* ---------- Control: avance programado ---------- */
 
+.avance-drive-link {
+  padding: 16px 16px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.avance-drive-linked {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.avance-drive-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .avance-upload {
-  padding: 16px;
+  padding: 8px 16px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;

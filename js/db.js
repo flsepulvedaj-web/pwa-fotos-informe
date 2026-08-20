@@ -412,7 +412,7 @@ export async function deleteProtocolPhoto(id) {
 
 // ---------- Control: Programación (snapshots de avance importados) ----------
 
-export async function addScheduleSnapshot({ obraId, tasks, overallPercent }) {
+export async function addScheduleSnapshot({ obraId, tasks, overallPercent, driveFileId = null, driveFileName = null }) {
   const store = await tx('controlSchedule', 'readwrite');
   const snapshot = {
     id: uuid(),
@@ -420,6 +420,10 @@ export async function addScheduleSnapshot({ obraId, tasks, overallPercent }) {
     uploadedAt: Date.now(),
     tasks, // [{ name, plannedStart, plannedEnd, plannedPercent, actualPercent }]
     overallPercent,
+    // Si este snapshot vino de Drive (no de subida manual), se guarda el id
+    // del archivo — así "Buscar programación nueva" sabe si ya lo importó.
+    driveFileId,
+    driveFileName,
   };
   await wrap(store.add(snapshot));
   return snapshot;

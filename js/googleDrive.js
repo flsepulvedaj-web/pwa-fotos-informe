@@ -292,6 +292,29 @@ export async function listDriveFiles(parentId) {
 }
 
 /**
+ * Lista los archivos .csv dentro de una carpeta de Drive, más recientes
+ * primero — se usa para traer la programación de obra que Pancho va
+ * subiendo directo a Drive (carpeta Control/Obras/<obra>/Programación).
+ * Se filtra por el nombre (no por mimeType): Drive guarda un .csv con
+ * mimeType distinto según cómo se subió (text/csv, application/vnd.ms-excel,
+ * text/plain…), así que el nombre es más confiable.
+ */
+export async function listDriveCsvFiles(parentId) {
+  const token = await signIn();
+  const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&pageSize=200&spaces=drive&orderBy=modifiedTime desc`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error listando archivos de Drive (${res.status}): ${text}`);
+  }
+  const data = await res.json();
+  return (data.files || []).filter((f) => f.name.toLowerCase().endsWith('.csv'));
+}
+
+/**
  * Descarga el contenido de un archivo de Drive como Blob (para cachear
  * localmente el plano elegido, offline-first como el resto de la app).
  */

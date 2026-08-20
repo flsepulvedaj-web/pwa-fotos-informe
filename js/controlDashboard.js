@@ -117,11 +117,19 @@ export function renderBarChartSVG(points, { width = 300, height = 70 } = {}) {
 }
 
 /** Tareas atrasadas del snapshot de programación más reciente. */
+// `new Date('2026-08-20')` parsea como medianoche UTC, no hora local — en
+// Chile eso cae la tarde/noche del día anterior, corriendo la comparación
+// contra la medianoche local un día. Se arma con componentes locales.
+function parseLocalDate(iso) {
+  const [yyyy, mm, dd] = iso.split('-').map(Number);
+  return new Date(yyyy, mm - 1, dd);
+}
+
 export function computeAtrasadas(snapshots) {
   const sorted = [...snapshots].sort((a, b) => b.uploadedAt - a.uploadedAt);
   const latest = sorted[0];
   if (!latest) return [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return latest.tasks.filter((t) => t.plannedEnd && new Date(t.plannedEnd) < today && t.plannedPercent < 100);
+  return latest.tasks.filter((t) => t.plannedEnd && parseLocalDate(t.plannedEnd) < today && t.plannedPercent < 100);
 }

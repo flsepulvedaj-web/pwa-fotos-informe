@@ -22,7 +22,7 @@ const PROTOCOLS_ROOT_FOLDER_KEY = 'gdrive-protocolos-root-folder';
 // así cualquier compañero que abra la app en su propio teléfono queda
 // restringido a esta carpeta desde el primer uso, sin tener que configurar
 // nada — nadie más que el admin puede cambiarla (ver getDriveRootFolder).
-const DEFAULT_ROOT_FOLDER = { id: '1L0EDZ6eHzqOSxLnOqV2Wd5p8rp6hGsjf', name: 'Proyectos LEN' };
+export const DEFAULT_ROOT_FOLDER = { id: '1L0EDZ6eHzqOSxLnOqV2Wd5p8rp6hGsjf', name: 'Proyectos LEN' };
 
 /**
  * Carpeta raíz de Drive a la que queda restringido el selector (para no
@@ -374,6 +374,42 @@ export async function uploadFile(folderId, blob, filename) {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Error subiendo a Drive (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
+/**
+ * Busca un archivo por nombre exacto dentro de una carpeta de Drive.
+ * Devuelve { id, name } o null. Se usa para archivos "únicos" que se
+ * actualizan en el mismo lugar (ej. permissions.json) en vez de acumular
+ * uno nuevo por guardado.
+ */
+export async function findFileByName(parentId, name) {
+  const token = await signIn();
+  const q = encodeURIComponent(`'${parentId}' in parents and name='${name.replace(/'/g, "\\'")}' and trashed=false`);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error buscando archivo en Drive (${res.status}): ${text}`);
+  }
+  const data = await res.json();
+  return (data.files || [])[0] || null;
+}
+
+/** Reemplaza el contenido de un archivo de Drive que ya existe. */
+export async function updateFileContent(fileId, blob) {
+  const token = await signIn();
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: blob,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error actualizando archivo en Drive (${res.status}): ${text}`);
   }
   return res.json();
 }

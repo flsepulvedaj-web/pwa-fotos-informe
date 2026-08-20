@@ -14,6 +14,7 @@ import { renderControlObraView } from './views/controlObraView.js';
 import { renderControlSSMAView } from './views/controlSSMAView.js';
 import { renderControlChecklistView } from './views/controlChecklistView.js';
 import { renderControlAvanceView } from './views/controlAvanceView.js';
+import { renderPermissionsAdminView } from './views/permissionsAdminView.js';
 
 const appEl = document.getElementById('app');
 
@@ -39,6 +40,8 @@ registerRoute('/control/obra/:obraId', ({ obraId }) => renderControlObraView(app
 registerRoute('/control/obra/:obraId/personal', ({ obraId }) => renderControlSSMAView(appEl, obraId));
 registerRoute('/control/obra/:obraId/checklist', ({ obraId }) => renderControlChecklistView(appEl, obraId));
 registerRoute('/control/obra/:obraId/avance', ({ obraId }) => renderControlAvanceView(appEl, obraId));
+
+registerRoute('/usuarios', () => renderPermissionsAdminView(appEl));
 
 registerNotFound(() => navigate('/'));
 

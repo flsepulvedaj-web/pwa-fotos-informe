@@ -8,10 +8,7 @@ import {
   clearProtocolsRootFolder,
   openFolderPicker,
 } from '../googleDrive.js';
-
-// Mismo correo admin que en foldersView.js (el resto del equipo usa la raíz
-// ya vinculada, fija, sin poder cambiarla).
-const ADMIN_EMAIL = 'flsepulvedaj@gmail.com';
+import { isAdmin } from '../permissions.js';
 
 /**
  * Pantalla de inicio del módulo Protocolos: lista de obras. Cada obra
@@ -20,13 +17,13 @@ const ADMIN_EMAIL = 'flsepulvedaj@gmail.com';
  */
 export async function renderProtocolHomeView(container) {
   const obras = await getAllObras();
-  const isAdmin = (await getSignedInEmail()) === ADMIN_EMAIL;
+  const isDriveAdmin = isAdmin(await getSignedInEmail());
 
   container.innerHTML = `
     <header class="app-header">
       <button class="icon-btn" id="btn-back-home" title="Volver al inicio">←</button>
       <span class="header-title">Protocolos</span>
-      ${isAdmin ? '<button class="icon-btn" id="btn-drive-settings" title="Configurar Google Drive">⚙️</button>' : ''}
+      ${isDriveAdmin ? '<button class="icon-btn" id="btn-drive-settings" title="Configurar Google Drive">⚙️</button>' : ''}
       <button class="icon-btn" id="btn-drafts" title="Protocolos en curso">📝</button>
     </header>
     <main class="view-content">

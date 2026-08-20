@@ -2267,3 +2267,114 @@ button {
   font-weight: 600;
   text-align: center;
 }
+
+/* ---------- Inicio: login / permisos por módulo ---------- */
+
+.home-login-hint {
+  max-width: 300px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.home-loading {
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.home-admin-link {
+  margin-top: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.home-no-access {
+  max-width: 300px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.home-no-access p {
+  margin: 4px 0;
+}
+
+.home-signout {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+  word-break: break-all;
+  text-align: center;
+}
+
+/* ---------- Administrar usuarios (permisos) ---------- */
+
+.permissions-hint {
+  margin: 4px 16px 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.permissions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px;
+}
+
+.permissions-row {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.permissions-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.permissions-email {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.permissions-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.permissions-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.permissions-remove-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  cursor: pointer;
+}

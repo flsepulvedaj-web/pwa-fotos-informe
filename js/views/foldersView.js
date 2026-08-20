@@ -29,10 +29,7 @@ import {
 } from '../googleDrive.js';
 import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow, openAiAvanceMultiFlow, openSameAdvanceMultiFlow } from '../aiAvance.js';
-
-// Único correo que puede cambiar la carpeta raíz de Drive del equipo; para
-// cualquier otra cuenta queda fija (ver ⚙️ en el header de Inicio).
-const ADMIN_EMAIL = 'flsepulvedaj@gmail.com';
+import { isAdmin } from '../permissions.js';
 
 let objectURLs = [];
 
@@ -99,14 +96,14 @@ export async function renderFoldersView(container, folderId) {
   let selectMode = false;
   const folderSelection = new Set();
   let folderSelectMode = false;
-  const isAdmin = folderId === ROOT_ID && (await getSignedInEmail()) === ADMIN_EMAIL;
+  const isRootAdmin = folderId === ROOT_ID && isAdmin(await getSignedInEmail());
 
   container.innerHTML = `
     <header class="app-header">
       <nav class="breadcrumbs" id="breadcrumbs"></nav>
       <div class="header-actions">
         ${folderId !== ROOT_ID ? '<button class="icon-btn" id="btn-folder-menu" title="Opciones de la carpeta">⋮</button>' : ''}
-        ${isAdmin ? '<button class="icon-btn" id="btn-drive-settings" title="Configurar Google Drive">⚙️</button>' : ''}
+        ${isRootAdmin ? '<button class="icon-btn" id="btn-drive-settings" title="Configurar Google Drive">⚙️</button>' : ''}
         <button class="icon-btn" id="btn-select" title="Seleccionar" ${photos.length ? '' : 'disabled'}>✓</button>
       </div>
     </header>

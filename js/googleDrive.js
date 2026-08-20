@@ -377,3 +377,35 @@ export async function uploadFile(folderId, blob, filename) {
   }
   return res.json();
 }
+
+/**
+ * Lista los archivos .json dentro de una carpeta de Drive, más recientes
+ * primero — se usa para sincronizar checklist/personal entre los teléfonos
+ * de todo el equipo (cada guardado sube un .json nuevo a esta carpeta;
+ * cada apertura de la app trae los que todavía no tenga).
+ */
+export async function listDriveJSONFiles(parentId) {
+  const token = await signIn();
+  const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&pageSize=500&spaces=drive&orderBy=modifiedTime desc`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error listando archivos de Drive (${res.status}): ${text}`);
+  }
+  const data = await res.json();
+  return (data.files || []).filter((f) => f.name.toLowerCase().endsWith('.json'));
+}
+
+/**
+ * Sube un objeto como archivo .json a una carpeta de Drive. Cada guardado
+ * sube un archivo NUEVO (no reemplaza uno existente) — más simple que
+ * mantener un id de archivo a actualizar, y el que sincroniza mira siempre
+ * el más reciente por nombre.
+ */
+export async function uploadJSON(folderId, filename, data) {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  return uploadFile(folderId, blob, filename);
+}

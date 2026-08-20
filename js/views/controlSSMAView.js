@@ -1,11 +1,14 @@
 import {
   getObra,
+  updateObra,
   getSSMAEntriesByObra,
   getSSMAEntryByObraAndDate,
   addSSMAEntry,
   updateSSMAEntry,
   deleteSSMAEntry,
 } from '../db.js';
+import { openFolderPicker, isSignedIn } from '../googleDrive.js';
+import { uploadSSMAEntry, syncSSMAFromDrive } from '../controlSync.js';
 import { navigate } from '../router.js';
 import { escapeHTML, confirmDialog, toast } from '../utils.js';
 
@@ -23,9 +26,11 @@ function formatDateEs(iso) {
 }
 
 /**
- * SSMA: cuánta gente hay en obra cada día (propio + subcontrato). Un
- * formulario corto para hoy (o cualquier fecha atrasada que se les haya
- * quedado sin cargar) + la lista histórica debajo, editable.
+ * Personal en obra: cuánta gente hay cada día (propio + subcontrato). Un
+ * formulario corto para hoy (o cualquier fecha atrasada) + el historial
+ * debajo, editable. Si hay una carpeta de Drive vinculada, cada guardado se
+ * sube ahí y cada apertura trae lo que haya cargado el resto del equipo
+ * (ej. Sergio desde su teléfono) — mismo mecanismo que Avance programado.
  */
 export async function renderControlSSMAView(container, obraId) {
   const obra = await getObra(obraId);
@@ -37,6 +42,26 @@ export async function renderControlSSMAView(container, obraId) {
   let entries = await getSSMAEntriesByObra(obraId);
   let editingId = null;
 
+  async function syncFromDrive({ auto }) {
+    if (!obra.personalDriveFolderId) return;
+    // Igual que en Avance: la sync automática nunca debe disparar el popup
+    // de sesión de Google — se salta calladita si el token ya venció.
+    if (auto && !isSignedIn()) return;
+    try {
+      const changed = await syncSSMAFromDrive(obraId, obra.personalDriveFolderId);
+      entries = await getSSMAEntriesByObra(obraId);
+      if (changed) {
+        toast(`📥 ${changed} registro(s) de personal traídos de Drive.`);
+        paint();
+      } else if (!auto) {
+        toast('Ya tenés todo lo más reciente.');
+      }
+    } catch (err) {
+      console.error('Error sincronizando personal desde Drive:', err);
+      if (!auto) toast('No se pudo conectar con Drive.');
+    }
+  }
+
   function paint() {
     container.innerHTML = `
       <header class="app-header">
@@ -44,6 +69,19 @@ export async function renderControlSSMAView(container, obraId) {
         <span class="header-title">Personal en obra — ${escapeHTML(obra.name)}</span>
       </header>
       <main class="view-content">
+        <section class="avance-drive-link">
+          ${obra.personalDriveFolderId ? `
+            <div class="avance-drive-linked">☁️ Compartido con el equipo en: <strong>${escapeHTML(obra.personalDriveFolderName)}</strong></div>
+            <div class="avance-drive-actions">
+              <button type="button" class="btn btn-secondary" id="btn-check-drive">🔄 Buscar registros nuevos</button>
+              <button type="button" class="btn btn-secondary" id="btn-change-drive-folder">Cambiar carpeta</button>
+            </div>
+          ` : `
+            <button type="button" class="btn btn-primary" id="btn-link-drive-folder">🔗 Compartir con el equipo (Drive)</button>
+            <p class="avance-upload-hint">Vinculá una carpeta de Drive para que lo que cargue cualquiera del equipo (ej. tu ITO en terreno) te llegue a vos también.</p>
+          `}
+        </section>
+
         <form class="ssma-form" id="ssma-form">
           <h2>${editingId ? 'Editar registro' : 'Registrar personal de hoy'}</h2>
           <label for="ssma-date">Fecha</label>
@@ -89,6 +127,25 @@ export async function renderControlSSMAView(container, obraId) {
 
     container.querySelector('#btn-back').addEventListener('click', () => navigate(`/control/obra/${obraId}`));
 
+    const linkFolder = async () => {
+      try {
+        const picked = await openFolderPicker();
+        if (!picked) return;
+        await updateObra(obraId, { personalDriveFolderId: picked.id, personalDriveFolderName: picked.name });
+        obra.personalDriveFolderId = picked.id;
+        obra.personalDriveFolderName = picked.name;
+        toast(`Carpeta vinculada: "${picked.name}".`);
+        paint();
+        syncFromDrive({ auto: false });
+      } catch (err) {
+        console.error(err);
+        toast('No se pudo conectar con Google Drive.');
+      }
+    };
+    container.querySelector('#btn-link-drive-folder')?.addEventListener('click', linkFolder);
+    container.querySelector('#btn-change-drive-folder')?.addEventListener('click', linkFolder);
+    container.querySelector('#btn-check-drive')?.addEventListener('click', () => syncFromDrive({ auto: false }));
+
     const dateInput = container.querySelector('#ssma-date');
     const propioInput = container.querySelector('#ssma-propio');
     const subInput = container.querySelector('#ssma-sub');
@@ -127,8 +184,9 @@ export async function renderControlSSMAView(container, obraId) {
         return;
       }
 
+      let saved;
       if (editingId) {
-        await updateSSMAEntry(editingId, { date, personalPropio, personalSubcontrato, nota });
+        saved = await updateSSMAEntry(editingId, { date, personalPropio, personalSubcontrato, nota });
         toast('Registro actualizado.');
         editingId = null;
       } else {
@@ -136,13 +194,15 @@ export async function renderControlSSMAView(container, obraId) {
         // duplicarlo (por si Pancho carga dos veces el mismo día sin querer).
         const existing = await getSSMAEntryByObraAndDate(obraId, date);
         if (existing) {
-          await updateSSMAEntry(existing.id, { personalPropio, personalSubcontrato, nota });
+          saved = await updateSSMAEntry(existing.id, { personalPropio, personalSubcontrato, nota });
           toast(`Ya había un registro para el ${formatDateEs(date)} — se actualizó.`);
         } else {
-          await addSSMAEntry({ obraId, date, personalPropio, personalSubcontrato, nota });
+          saved = await addSSMAEntry({ obraId, date, personalPropio, personalSubcontrato, nota });
           toast('Registro guardado.');
         }
       }
+
+      if (obra.personalDriveFolderId) uploadSSMAEntry(obra.personalDriveFolderId, saved);
 
       entries = await getSSMAEntriesByObra(obraId);
       paint();
@@ -159,7 +219,7 @@ export async function renderControlSSMAView(container, obraId) {
     container.querySelectorAll('.ssma-delete-btn').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const ok = await confirmDialog('¿Eliminar este registro de personal? No se puede deshacer.');
+        const ok = await confirmDialog('¿Eliminar este registro de personal? No se puede deshacer. Ojo: si estaba compartido con el equipo, la copia en Drive no se borra sola.');
         if (!ok) return;
         await deleteSSMAEntry(btn.dataset.deleteId);
         if (editingId === btn.dataset.deleteId) editingId = null;
@@ -171,4 +231,8 @@ export async function renderControlSSMAView(container, obraId) {
   }
 
   paint();
+
+  if (obra.personalDriveFolderId) {
+    syncFromDrive({ auto: true });
+  }
 }

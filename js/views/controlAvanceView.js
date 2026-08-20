@@ -1,6 +1,7 @@
 import { getObra, updateObra, addScheduleSnapshot, getScheduleSnapshotsByObra, deleteScheduleSnapshot } from '../db.js';
 import { parseScheduleCSV, buildTaskTree } from '../controlScheduleParser.js';
-import { openFolderPicker, listDriveCsvFiles, downloadDriveFile } from '../googleDrive.js';
+import { openFolderPicker, isSignedIn } from '../googleDrive.js';
+import { syncAvanceFromDrive } from '../controlSync.js';
 import { navigate } from '../router.js';
 import { escapeHTML, confirmDialog, toast } from '../utils.js';
 
@@ -139,45 +140,27 @@ export async function renderControlAvanceView(container, obraId) {
   }
 
   /**
-   * Trae TODOS los .csv de la carpeta que todavía no se hayan importado (no
-   * solo el más nuevo) — Pancho va dejando un archivo nuevo por revisión
-   * ("Prog rev DD-MM-YYYY.csv"), así que cada uno es un punto real del
-   * historial de avance, no un reemplazo del anterior. Cada snapshot usa la
-   * fecha de modificación del archivo en Drive, no el momento de la
-   * importación, para que el historial quede ordenado por revisión real.
+   * Trae TODAS las programaciones nuevas de la carpeta vinculada (no solo
+   * la más nueva) — Pancho/Sergio van dejando un archivo por revisión, así
+   * que cada uno es un punto real del historial de avance. La lógica de
+   * traer+parsear vive en controlSync.js, compartida con el Dashboard (que
+   * también sincroniza al abrir la obra, sin tener que entrar acá).
    */
   async function checkDriveForNewProgramacion({ auto }) {
     if (!obra.programacionDriveFolderId) return;
+    // El chequeo automático nunca debe disparar el popup de sesión de
+    // Google — eso solo puede pasar desde un toque directo (botón).
+    if (auto && !isSignedIn()) return;
     try {
-      const files = await listDriveCsvFiles(obra.programacionDriveFolderId);
-      if (!files.length) {
-        if (!auto) toast('No hay ningún archivo .csv en esa carpeta de Drive todavía.');
-        return;
+      const count = await syncAvanceFromDrive(obraId, obra.programacionDriveFolderId);
+      if (count) {
+        snapshots = await getScheduleSnapshotsByObra(obraId);
+        selectedSnapshotId = snapshots[0]?.id || null;
+        toast(count === 1 ? '📥 Nueva programación importada desde Drive.' : `📥 ${count} programaciones nuevas importadas desde Drive.`);
+        paint();
+      } else if (!auto) {
+        toast('Ya tenés cargadas todas las programaciones de esa carpeta.');
       }
-      const pending = files
-        .filter((f) => !snapshots.some((s) => s.driveFileId === f.id))
-        .sort((a, b) => new Date(a.modifiedTime) - new Date(b.modifiedTime));
-
-      if (!pending.length) {
-        if (!auto) toast('Ya tenés cargadas todas las programaciones de esa carpeta.');
-        return;
-      }
-
-      let lastPercent = null;
-      for (const file of pending) {
-        const blob = await downloadDriveFile(file.id);
-        const text = await readTextSmart(new File([blob], file.name));
-        const result = await importCSVText(text, {
-          driveFileId: file.id,
-          driveFileName: file.name,
-          uploadedAt: new Date(file.modifiedTime).getTime(),
-        });
-        lastPercent = result.overallPercent;
-      }
-      toast(pending.length === 1
-        ? `📥 Nueva programación desde Drive: ${lastPercent}% de avance (${pending[0].name}).`
-        : `📥 ${pending.length} programaciones nuevas importadas desde Drive.`);
-      paint();
     } catch (err) {
       console.error('Error buscando programación en Drive:', err);
       if (!auto) toast('No se pudo conectar con Drive.');

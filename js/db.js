@@ -447,8 +447,9 @@ export async function deleteScheduleSnapshot(id) {
 
 // ---------- Control: SSMA (personal en obra por día) ----------
 
-export async function addSSMAEntry({ obraId, date, personalPropio = 0, personalSubcontrato = 0, nota = '' }) {
+export async function addSSMAEntry({ obraId, date, personalPropio = 0, personalSubcontrato = 0, nota = '', updatedAt }) {
   const store = await tx('controlSSMA', 'readwrite');
+  const now = Date.now();
   const entry = {
     id: uuid(),
     obraId,
@@ -456,7 +457,8 @@ export async function addSSMAEntry({ obraId, date, personalPropio = 0, personalS
     personalPropio,
     personalSubcontrato,
     nota,
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
   };
   await wrap(store.add(entry));
   return entry;
@@ -475,11 +477,11 @@ export async function getSSMAEntryByObraAndDate(obraId, date) {
   return entries.find((e) => e.date === date) || null;
 }
 
-export async function updateSSMAEntry(id, changes) {
+export async function updateSSMAEntry(id, changes, { updatedAt = Date.now() } = {}) {
   const store = await tx('controlSSMA', 'readwrite');
   const entry = await wrap(store.get(id));
   if (!entry) return null;
-  Object.assign(entry, changes);
+  Object.assign(entry, changes, { updatedAt });
   await wrap(store.put(entry));
   return entry;
 }
@@ -499,8 +501,18 @@ export async function deleteSSMAEntry(id) {
 
 export async function createChecklistType({ obraId, key, title, items, order = 0 }) {
   const store = await tx('controlChecklistTypes', 'readwrite');
+  // Id determinístico (no uuid al azar) en vez de una regla — evita crear
+  // un tipo duplicado si esta función se llama dos veces para la misma obra
+  // (ej. una carrera al abrir dos pantallas a la vez). OJO: esto NO hace
+  // que el id coincida entre el teléfono de Pancho y el de Sergio (cada uno
+  // tiene su propio `obraId` local) — por eso la sincronización entre
+  // dispositivos (controlSync.js) identifica el tipo por `key`
+  // ('ssma'/'faenas'/'programacion'), no por este id.
+  const id = `${obraId}:${key}`;
+  const existing = await wrap(store.get(id));
+  if (existing) return existing;
   const type = {
-    id: uuid(),
+    id,
     obraId,
     key, // 'ssma' | 'faenas' | 'programacion' | custom
     title,
@@ -534,8 +546,9 @@ export async function updateChecklistType(id, changes) {
 
 // ---------- Control: checklist diario (instancias por día) ----------
 
-export async function addChecklistEntry({ obraId, checklistTypeId, date, items }) {
+export async function addChecklistEntry({ obraId, checklistTypeId, date, items, updatedAt }) {
   const store = await tx('controlChecklists', 'readwrite');
+  const now = Date.now();
   const entry = {
     id: uuid(),
     obraId,
@@ -543,10 +556,18 @@ export async function addChecklistEntry({ obraId, checklistTypeId, date, items }
     date, // 'YYYY-MM-DD'
     // Copia (snapshot) de los ítems del tipo al momento de crear el
     // checklist del día — si más adelante se edita la lista del tipo, los
-    // días ya cargados no cambian solos.
-    items: items.map((it) => ({ itemId: it.id, label: it.label, nota: it.nota || '', status: null, resolved: false })),
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    // días ya cargados no cambian solos. Si el ítem ya trae status/resolved
+    // (porque viene de un registro sincronizado desde Drive, no de la
+    // plantilla del tipo), se respeta en vez de resetear a null/false.
+    items: items.map((it) => ({
+      itemId: it.itemId ?? it.id,
+      label: it.label,
+      nota: it.nota || '',
+      status: it.status ?? null,
+      resolved: it.resolved ?? false,
+    })),
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
   };
   await wrap(store.add(entry));
   return entry;
@@ -577,11 +598,11 @@ export async function getChecklistEntryByTypeAndDate(checklistTypeId, date) {
   return entries.find((e) => e.date === date) || null;
 }
 
-export async function updateChecklistEntry(id, changes) {
+export async function updateChecklistEntry(id, changes, { updatedAt = Date.now() } = {}) {
   const store = await tx('controlChecklists', 'readwrite');
   const entry = await wrap(store.get(id));
   if (!entry) return null;
-  Object.assign(entry, changes, { updatedAt: Date.now() });
+  Object.assign(entry, changes, { updatedAt });
   await wrap(store.put(entry));
   return entry;
 }

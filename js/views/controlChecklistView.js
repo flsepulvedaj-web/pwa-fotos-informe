@@ -1,5 +1,6 @@
 import {
   getObra,
+  updateObra,
   getChecklistTypesByObra,
   createChecklistType,
   updateChecklistType,
@@ -13,6 +14,8 @@ import {
   deleteChecklistPhoto,
 } from '../db.js';
 import { DEFAULT_CHECKLIST_TYPES, CHECKLIST_STATUS } from '../controlChecklistTemplates.js';
+import { openFolderPicker, isSignedIn } from '../googleDrive.js';
+import { uploadChecklistEntry, syncChecklistFromDrive } from '../controlSync.js';
 import { navigate } from '../router.js';
 import { escapeHTML, downscaleImageBlob, confirmDialog, toast, promptDialog } from '../utils.js';
 
@@ -92,6 +95,26 @@ export async function renderControlChecklistView(container, obraId) {
 
   await loadEntryForDate(todayLocalISO());
 
+  async function syncFromDrive({ auto }) {
+    if (!obra.checklistDriveFolderId) return;
+    // La sync automática nunca dispara el popup de sesión de Google.
+    if (auto && !isSignedIn()) return;
+    try {
+      const changed = await syncChecklistFromDrive(obraId, obra.checklistDriveFolderId);
+      if (changed) {
+        entries = await getChecklistEntriesByType(activeTypeId);
+        await loadEntryForDate(entry.date);
+        toast(`📥 ${changed} checklist(s) traído(s) de Drive.`);
+        paint();
+      } else if (!auto) {
+        toast('Ya tenés todo lo más reciente.');
+      }
+    } catch (err) {
+      console.error('Error sincronizando checklist desde Drive:', err);
+      if (!auto) toast('No se pudo conectar con Drive.');
+    }
+  }
+
   function paint() {
     revokeAllURLs();
     const type = activeType();
@@ -104,6 +127,19 @@ export async function renderControlChecklistView(container, obraId) {
         <button class="icon-btn" id="btn-delete-entry" title="Eliminar checklist de este día">🗑️</button>
       </header>
       <main class="view-content protocol-form">
+        <section class="avance-drive-link">
+          ${obra.checklistDriveFolderId ? `
+            <div class="avance-drive-linked">☁️ Compartido con el equipo en: <strong>${escapeHTML(obra.checklistDriveFolderName)}</strong></div>
+            <div class="avance-drive-actions">
+              <button type="button" class="btn btn-secondary" id="btn-check-drive">🔄 Buscar checklist nuevo</button>
+              <button type="button" class="btn btn-secondary" id="btn-change-drive-folder">Cambiar carpeta</button>
+            </div>
+          ` : `
+            <button type="button" class="btn btn-primary" id="btn-link-drive-folder">🔗 Compartir con el equipo (Drive)</button>
+            <p class="avance-upload-hint">Vinculá una carpeta de Drive para que el checklist que llene tu ITO en terreno te llegue a vos también.</p>
+          `}
+        </section>
+
         <div class="checklist-type-tabs">
           ${types.map((t) => `
             <button type="button" class="checklist-type-tab ${t.id === activeTypeId ? 'active' : ''}" data-type-id="${t.id}">${escapeHTML(t.title)}</button>
@@ -170,6 +206,25 @@ export async function renderControlChecklistView(container, obraId) {
     `;
 
     container.querySelector('#btn-back').addEventListener('click', () => navigate(`/control/obra/${obraId}`));
+
+    const linkFolder = async () => {
+      try {
+        const picked = await openFolderPicker();
+        if (!picked) return;
+        await updateObra(obraId, { checklistDriveFolderId: picked.id, checklistDriveFolderName: picked.name });
+        obra.checklistDriveFolderId = picked.id;
+        obra.checklistDriveFolderName = picked.name;
+        toast(`Carpeta vinculada: "${picked.name}".`);
+        paint();
+        syncFromDrive({ auto: false });
+      } catch (err) {
+        console.error(err);
+        toast('No se pudo conectar con Google Drive.');
+      }
+    };
+    container.querySelector('#btn-link-drive-folder')?.addEventListener('click', linkFolder);
+    container.querySelector('#btn-change-drive-folder')?.addEventListener('click', linkFolder);
+    container.querySelector('#btn-check-drive')?.addEventListener('click', () => syncFromDrive({ auto: false }));
 
     container.querySelectorAll('.checklist-type-tab').forEach((tab) => {
       tab.addEventListener('click', async () => {
@@ -243,6 +298,7 @@ export async function renderControlChecklistView(container, obraId) {
       const index = Number(row.dataset.index);
       entry.items[index].status = select.value || null;
       entry = await updateChecklistEntry(entry.id, { items: entry.items });
+      if (obra.checklistDriveFolderId) uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
     });
 
     const photoInput = container.querySelector('#checklist-photo-input');

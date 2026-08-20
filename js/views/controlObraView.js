@@ -15,6 +15,8 @@ import {
   renderLineChartSVG,
   renderBarChartSVG,
 } from '../controlDashboard.js';
+import { isSignedIn } from '../googleDrive.js';
+import { syncChecklistFromDrive, syncSSMAFromDrive, syncAvanceFromDrive, uploadChecklistEntry } from '../controlSync.js';
 import { navigate } from '../router.js';
 import { escapeHTML, toast } from '../utils.js';
 
@@ -34,8 +36,10 @@ const STATUS_LABEL = {
 /**
  * Pantalla principal de Control para una obra: dashboard de KPI arriba
  * (avance, personal, cumplimiento del checklist, incumplimientos abiertos y
- * tareas atrasadas) + accesos a cada sección abajo. Las secciones que
- * todavía no están construidas se muestran marcadas "Próximamente".
+ * tareas atrasadas) + accesos a cada sección abajo. Al abrir la obra, si
+ * hay carpetas de Drive vinculadas, sincroniza en segundo plano lo que haya
+ * cargado el resto del equipo (ej. el ITO en terreno) — así Pancho ve el
+ * estado real sin tener que entrar a cada sección primero.
  */
 export async function renderControlObraView(container, obraId) {
   const obra = await getObra(obraId);
@@ -44,18 +48,6 @@ export async function renderControlObraView(container, obraId) {
     return;
   }
 
-  const [types, checklistEntries, ssmaEntries, snapshots] = await Promise.all([
-    getChecklistTypesByObra(obraId),
-    getChecklistEntriesByObra(obraId),
-    getSSMAEntriesByObra(obraId),
-    getScheduleSnapshotsByObra(obraId),
-  ]);
-
-  const avance = computeAvanceKPI(snapshots);
-  const personal = computePersonalKPI(ssmaEntries);
-  const checklist = computeChecklistKPI(checklistEntries, types);
-  const atrasadas = computeAtrasadas(snapshots);
-
   const sections = [
     { id: 'personal', icon: '👷', title: 'Personal en obra', desc: 'Cuántos hay hoy (propio/subcontrato)', ready: true },
     { id: 'checklist', icon: '✅', title: 'Checklist diario', desc: 'SSMA, Faenas y Programación', ready: true },
@@ -63,7 +55,24 @@ export async function renderControlObraView(container, obraId) {
     { id: 'actas', icon: '📝', title: 'Actas de reunión', desc: 'Asistentes, temas, acuerdos', ready: false },
   ];
 
+  async function loadData() {
+    const [types, checklistEntries, ssmaEntries, snapshots] = await Promise.all([
+      getChecklistTypesByObra(obraId),
+      getChecklistEntriesByObra(obraId),
+      getSSMAEntriesByObra(obraId),
+      getScheduleSnapshotsByObra(obraId),
+    ]);
+    return { types, checklistEntries, ssmaEntries, snapshots };
+  }
+
+  let data = await loadData();
+
   function paint() {
+    const avance = computeAvanceKPI(data.snapshots);
+    const personal = computePersonalKPI(data.ssmaEntries);
+    const checklist = computeChecklistKPI(data.checklistEntries, data.types);
+    const atrasadas = computeAtrasadas(data.snapshots);
+
     container.innerHTML = `
       <header class="app-header">
         <button class="icon-btn" id="btn-back" title="Volver">←</button>
@@ -165,12 +174,42 @@ export async function renderControlObraView(container, obraId) {
         const entry = await getChecklistEntry(entryId);
         if (!entry) return;
         entry.items[itemIndex].resolved = true;
-        await updateChecklistEntry(entryId, { items: entry.items });
+        const updated = await updateChecklistEntry(entryId, { items: entry.items });
+        if (obra.checklistDriveFolderId) {
+          const type = data.types.find((t) => t.id === updated.checklistTypeId);
+          if (type) uploadChecklistEntry(obra.checklistDriveFolderId, type.key, updated);
+        }
         toast('Marcado como resuelto.');
-        renderControlObraView(container, obraId);
+        data = await loadData();
+        paint();
       });
     });
   }
 
   paint();
+
+  // Sincroniza en segundo plano (no bloquea el primer pintado) lo que haya
+  // cargado el resto del equipo en Drive — si trae algo nuevo, refresca los
+  // datos y vuelve a pintar. Nunca dispara el popup de sesión de Google
+  // (isSignedIn evita eso; si el token venció, se salta calladito y el
+  // usuario puede refrescar sesión desde cualquiera de las 3 secciones).
+  const hasLinkedFolders = obra.checklistDriveFolderId || obra.personalDriveFolderId || obra.programacionDriveFolderId;
+  if (hasLinkedFolders && isSignedIn()) {
+    (async () => {
+      try {
+        const [c1, c2, c3] = await Promise.all([
+          obra.checklistDriveFolderId ? syncChecklistFromDrive(obraId, obra.checklistDriveFolderId) : 0,
+          obra.personalDriveFolderId ? syncSSMAFromDrive(obraId, obra.personalDriveFolderId) : 0,
+          obra.programacionDriveFolderId ? syncAvanceFromDrive(obraId, obra.programacionDriveFolderId) : 0,
+        ]);
+        if (c1 || c2 || c3) {
+          data = await loadData();
+          toast('🔄 Dashboard actualizado con los últimos datos del equipo.');
+          paint();
+        }
+      } catch (err) {
+        console.error('Error sincronizando dashboard de Control:', err);
+      }
+    })();
+  }
 }

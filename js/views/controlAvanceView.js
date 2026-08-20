@@ -19,6 +19,21 @@ function formatDateEs(iso) {
   return `${dd}-${mm}-${yyyy}`;
 }
 
+/**
+ * Project exporta el CSV en "Windows (ANSI)" por defecto, no UTF-8 — leído
+ * como UTF-8 directo, las tildes y la ñ salen mal. Se intenta UTF-8 primero
+ * (lo normal si alguien lo reguarda desde Excel) y si aparece el caracter
+ * de reemplazo (texto corrupto), se reintenta como Windows-1252 (ANSI).
+ */
+async function readTextSmart(file) {
+  const buf = await file.arrayBuffer();
+  const utf8 = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+  if (utf8.includes('�')) {
+    return new TextDecoder('windows-1252').decode(buf);
+  }
+  return utf8;
+}
+
 function isAtrasada(task) {
   if (!task.plannedEnd) return false;
   const today = new Date();
@@ -109,7 +124,7 @@ export async function renderControlAvanceView(container, obraId) {
       csvInput.value = '';
       if (!file) return;
       try {
-        const text = await file.text();
+        const text = await readTextSmart(file);
         const { tasks, overallPercent } = parseScheduleCSV(text);
         const snapshot = await addScheduleSnapshot({ obraId, tasks, overallPercent });
         snapshots = await getScheduleSnapshotsByObra(obraId);

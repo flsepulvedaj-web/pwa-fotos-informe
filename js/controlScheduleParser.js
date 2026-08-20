@@ -45,7 +45,10 @@ function splitCSVLine(line, delimiter) {
 }
 
 function findColumn(headers, aliases) {
-  const normalized = headers.map((h) => h.toLowerCase().trim());
+  // Project a veces nombra las columnas del export con "_" en vez de
+  // espacio (ej. "Porcentaje_completado") — se normaliza antes de
+  // comparar contra los alias, que están escritos con espacios.
+  const normalized = headers.map((h) => h.toLowerCase().trim().replace(/_/g, ' '));
   for (const alias of aliases) {
     const idx = normalized.indexOf(alias);
     if (idx !== -1) return idx;

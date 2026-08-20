@@ -410,6 +410,33 @@ export async function deleteProtocolPhoto(id) {
   await wrap(store.delete(id));
 }
 
+// ---------- Control: Programación (snapshots de avance importados) ----------
+
+export async function addScheduleSnapshot({ obraId, tasks, overallPercent }) {
+  const store = await tx('controlSchedule', 'readwrite');
+  const snapshot = {
+    id: uuid(),
+    obraId,
+    uploadedAt: Date.now(),
+    tasks, // [{ name, plannedStart, plannedEnd, plannedPercent, actualPercent }]
+    overallPercent,
+  };
+  await wrap(store.add(snapshot));
+  return snapshot;
+}
+
+export async function getScheduleSnapshotsByObra(obraId) {
+  const store = await tx('controlSchedule', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => b.uploadedAt - a.uploadedAt);
+}
+
+export async function deleteScheduleSnapshot(id) {
+  const store = await tx('controlSchedule', 'readwrite');
+  await wrap(store.delete(id));
+}
+
 // ---------- Control: SSMA (personal en obra por día) ----------
 
 export async function addSSMAEntry({ obraId, date, personalPropio = 0, personalSubcontrato = 0, nota = '' }) {

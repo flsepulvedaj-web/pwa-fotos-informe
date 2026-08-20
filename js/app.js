@@ -13,6 +13,7 @@ import { renderControlHomeView } from './views/controlHomeView.js';
 import { renderControlObraView } from './views/controlObraView.js';
 import { renderControlSSMAView } from './views/controlSSMAView.js';
 import { renderControlChecklistView } from './views/controlChecklistView.js';
+import { renderControlAvanceView } from './views/controlAvanceView.js';
 
 const appEl = document.getElementById('app');
 
@@ -37,6 +38,7 @@ registerRoute('/control', () => renderControlHomeView(appEl));
 registerRoute('/control/obra/:obraId', ({ obraId }) => renderControlObraView(appEl, obraId));
 registerRoute('/control/obra/:obraId/personal', ({ obraId }) => renderControlSSMAView(appEl, obraId));
 registerRoute('/control/obra/:obraId/checklist', ({ obraId }) => renderControlChecklistView(appEl, obraId));
+registerRoute('/control/obra/:obraId/avance', ({ obraId }) => renderControlAvanceView(appEl, obraId));
 
 registerNotFound(() => navigate('/'));
 

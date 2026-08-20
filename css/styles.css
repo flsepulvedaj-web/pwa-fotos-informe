@@ -2002,3 +2002,92 @@ button {
   font-size: 12px;
   color: var(--color-text-muted);
 }
+
+/* ---------- Control: avance programado ---------- */
+
+.avance-upload {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.avance-upload-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.avance-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px 4px;
+}
+
+.avance-percent {
+  font-size: 44px;
+  font-weight: 800;
+  color: var(--color-primary);
+}
+
+.avance-percent-label {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.avance-snapshot-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.avance-snapshot-picker label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  display: none;
+}
+
+.avance-snapshot-picker select {
+  flex: 1;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 13px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+}
+
+.avance-table-wrap {
+  overflow-x: auto;
+  padding: 0 16px 20px;
+}
+
+.avance-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.avance-table th,
+.avance-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.avance-table th:first-child,
+.avance-table td:first-child {
+  white-space: normal;
+  min-width: 180px;
+}
+
+.avance-row-atrasada td {
+  color: var(--color-danger);
+  font-weight: 600;
+}

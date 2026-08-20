@@ -19,7 +19,7 @@ export async function renderControlObraView(container, obraId) {
   const sections = [
     { id: 'personal', icon: '👷', title: 'Personal en obra', desc: 'Cuántos hay hoy (propio/subcontrato)', ready: true },
     { id: 'checklist', icon: '✅', title: 'Checklist diario', desc: 'SSMA, Faenas y Programación', ready: true },
-    { id: 'avance', icon: '📅', title: 'Avance programado', desc: 'Importar programación desde Project', ready: false },
+    { id: 'avance', icon: '📅', title: 'Avance programado', desc: 'Importar programación desde Project', ready: true },
     { id: 'actas', icon: '📝', title: 'Actas de reunión', desc: 'Asistentes, temas, acuerdos', ready: false },
   ];
 
@@ -50,6 +50,8 @@ export async function renderControlObraView(container, obraId) {
         navigate(`/control/obra/${obraId}/personal`);
       } else if (section === 'checklist') {
         navigate(`/control/obra/${obraId}/checklist`);
+      } else if (section === 'avance') {
+        navigate(`/control/obra/${obraId}/avance`);
       }
       // Las demás secciones todavía no tienen vista — no hacen nada al
       // tocarlas (quedan visibles para mostrar el mapa completo del módulo).

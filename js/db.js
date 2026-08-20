@@ -536,7 +536,7 @@ export async function addChecklistEntry({ obraId, checklistTypeId, date, items }
     // Copia (snapshot) de los ítems del tipo al momento de crear el
     // checklist del día — si más adelante se edita la lista del tipo, los
     // días ya cargados no cambian solos.
-    items: items.map((it) => ({ itemId: it.id, label: it.label, nota: it.nota || '', status: null })),
+    items: items.map((it) => ({ itemId: it.id, label: it.label, nota: it.nota || '', status: null, resolved: false })),
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -548,6 +548,14 @@ export async function getChecklistEntriesByType(checklistTypeId) {
   const store = await tx('controlChecklists', 'readonly');
   const index = store.index('by_typeId');
   const results = await wrap(index.getAll(checklistTypeId));
+  return results.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Todos los checklists de una obra (los 3 tipos juntos) — para el dashboard. */
+export async function getChecklistEntriesByObra(obraId) {
+  const store = await tx('controlChecklists', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
   return results.sort((a, b) => b.date.localeCompare(a.date));
 }
 

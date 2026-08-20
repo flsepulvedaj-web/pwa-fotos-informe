@@ -126,7 +126,7 @@ export async function renderControlChecklistView(container, obraId) {
   function paint() {
     revokeAllURLs();
     const type = activeType();
-    const noCumpleCount = entry.items.filter((it) => it.status && it.status !== 'SI' && it.status !== 'N_A').length;
+    const sinContestarCount = entry.items.filter((it) => !it.status).length;
 
     container.innerHTML = `
       <header class="app-header">
@@ -159,7 +159,7 @@ export async function renderControlChecklistView(container, obraId) {
           <input type="date" id="checklist-date" value="${entry.date}" />
         </section>
 
-        ${noCumpleCount ? `<div class="checklist-alert">⚠️ ${noCumpleCount} ítem(s) sin cumplir hoy</div>` : ''}
+        ${sinContestarCount ? `<div class="checklist-alert">⚠️ ${sinContestarCount} ítem(s) sin contestar</div>` : ''}
 
         <div class="checklist-edit-toggle">
           <button type="button" class="btn btn-secondary" id="btn-toggle-edit">${editingItems ? '✅ Listo' : '✏️ Editar ítems de esta lista'}</button>
@@ -199,11 +199,13 @@ export async function renderControlChecklistView(container, obraId) {
           ${entries.length ? `
             <section class="ssma-history-list">
               ${entries.map((e) => {
-                const n = e.items.filter((it) => it.status && it.status !== 'SI' && it.status !== 'N_A').length;
+                const sinContestar = e.items.filter((it) => !it.status).length;
+                const noCumple = e.items.filter((it) => it.status && it.status !== 'SI' && it.status !== 'N_A').length;
                 return `
                   <button type="button" class="ssma-history-main" data-open-date="${e.date}">
                     <span class="ssma-history-date">${formatDateEs(e.date)}${e.date === entry.date ? ' (actual)' : ''}</span>
-                    <span class="ssma-history-count">${n ? `⚠️ ${n} sin cumplir` : '✅ Todo cumple / sin marcar'}</span>
+                    <span class="ssma-history-count">${sinContestar ? `⚠️ ${sinContestar} sin contestar` : '✅ Checklist completo'}</span>
+                    ${noCumple ? `<span class="ssma-history-split">${noCumple} ítem(s) con "No cumple"</span>` : ''}
                   </button>
                 `;
               }).join('')}
@@ -370,20 +372,6 @@ export async function renderControlChecklistView(container, obraId) {
       });
     });
 
-    container.querySelectorAll('.checklist-resolve-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const idx = Number(btn.dataset.resolveIndex);
-        entry.items[idx].resolved = true;
-        entry = await updateChecklistEntry(entry.id, { items: entry.items });
-        if (obra.checklistDriveFolderId) {
-          const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
-          if (!ok) toast('⚠️ Se marcó resuelto, pero no se pudo subir a Drive (se reintenta después).');
-        }
-        toast('Marcado como resuelto.');
-        paint();
-      });
-    });
-
     // Si se llegó acá desde "Resolver" en el Dashboard, hace scroll al
     // ítem exacto una sola vez (no en cada repintado posterior).
     if (highlightItemIndex !== null) {
@@ -397,7 +385,6 @@ export async function renderControlChecklistView(container, obraId) {
 }
 
 function renderChecklistItemRow(item, index, highlighted) {
-  const pending = item.status && item.status !== 'SI' && item.status !== 'N_A' && !item.resolved;
   return `
     <div class="control-point-row${highlighted ? ' control-point-highlighted' : ''}" data-index="${index}">
       <div class="control-point-label">${index + 1}. ${escapeHTML(item.label)}</div>
@@ -407,8 +394,6 @@ function renderChecklistItemRow(item, index, highlighted) {
         ${CHECKLIST_STATUS.map((s) => `<option value="${s.id}" ${item.status === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}
       </select>
       <input type="text" class="checklist-observacion-input" placeholder="Observación (opcional)" maxlength="300" value="${escapeHTML(item.observacion || '')}" />
-      ${pending ? `<button type="button" class="btn btn-secondary checklist-resolve-btn" data-resolve-index="${index}">✅ Marcar resuelto</button>` : ''}
-      ${item.resolved ? `<div class="checklist-resolved-tag">✅ Resuelto</div>` : ''}
     </div>
   `;
 }

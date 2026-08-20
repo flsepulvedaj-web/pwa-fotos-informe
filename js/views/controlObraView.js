@@ -24,13 +24,6 @@ function formatDateEs(iso) {
   return `${dd}-${mm}-${yyyy}`;
 }
 
-const STATUS_LABEL = {
-  NO_ENTREGADO: 'No entregado',
-  INCOMPLETO: 'Incompleto',
-  EN_REVISION: 'En revisión',
-  NO_LO_TIENEN: 'No lo tienen',
-};
-
 /**
  * Pantalla principal de Control para una obra: dashboard de KPI arriba
  * (avance, personal, cumplimiento del checklist, incumplimientos abiertos y
@@ -126,7 +119,7 @@ export async function renderControlObraView(container, obraId) {
                 <div class="incumplimiento-main">
                   <span class="incumplimiento-tag">${escapeHTML(it.typeTitle)}</span>
                   <span class="incumplimiento-label">${escapeHTML(it.label)}</span>
-                  <span class="incumplimiento-meta">${formatDateEs(it.date)} — ${STATUS_LABEL[it.status] || it.status}</span>
+                  <span class="incumplimiento-meta">${formatDateEs(it.date)} — sin contestar</span>
                   ${it.observacion ? `<span class="incumplimiento-observacion">"${escapeHTML(it.observacion)}"</span>` : ''}
                 </div>
                 <button type="button" class="btn btn-secondary incumplimiento-resolve-btn" data-type-key="${it.typeKey}" data-date="${it.date}" data-item-index="${it.itemIndex}">Resolver</button>

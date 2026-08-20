@@ -35,10 +35,11 @@ export function computePersonalKPI(ssmaEntries) {
 
 /**
  * % de cumplimiento del checklist en los últimos 30 días (ítems en "SI"
- * contra el total de ítems marcados, sin contar los N/A) + la lista de
- * incumplimientos abiertos (cualquier ítem que no haya quedado en SI/N-A y
- * todavía no se marcó resuelto), de cualquier fecha — no solo 30 días,
- * porque un incumplimiento sigue abierto hasta que alguien lo resuelva.
+ * contra el total de ítems contestados, sin contar los N/A — el historial
+ * completo de "No" queda igual guardado día por día, esto solo resume) +
+ * la lista de "Pendientes": ítems que TODAVÍA NADIE CONTESTÓ (no los que
+ * ya se marcaron "No" — un "No" ya es un dato registrado, no una tarea
+ * pendiente; lo pendiente es completar el formulario).
  */
 export function computeChecklistKPI(entries, types) {
   const typeTitleById = new Map(types.map((t) => [t.id, t.title]));
@@ -52,12 +53,11 @@ export function computeChecklistKPI(entries, types) {
   for (const entry of entries) {
     const entryTime = new Date(entry.date).getTime();
     entry.items.forEach((item, itemIndex) => {
-      if (!item.status || item.status === 'N_A') return;
-      if (entryTime >= cutoff) {
+      if (item.status && item.status !== 'N_A' && entryTime >= cutoff) {
         evaluated++;
         if (item.status === 'SI') cumplidos++;
       }
-      if (item.status !== 'SI' && !item.resolved) {
+      if (!item.status) {
         incumplimientos.push({
           entryId: entry.id,
           itemIndex,
@@ -65,7 +65,6 @@ export function computeChecklistKPI(entries, types) {
           typeKey: typeKeyById.get(entry.checklistTypeId) || '',
           date: entry.date,
           label: item.label,
-          status: item.status,
           observacion: item.observacion || '',
         });
       }

@@ -1969,6 +1969,25 @@ button {
   font-family: inherit;
 }
 
+.control-point-highlighted {
+  border: 2px solid var(--color-accent);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(242, 169, 59, 0.08);
+}
+
+.checklist-resolve-btn {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.checklist-resolved-tag {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #16a34a;
+  font-weight: 600;
+}
+
 .checklist-observacion-input {
   margin-top: 6px;
   width: 100%;

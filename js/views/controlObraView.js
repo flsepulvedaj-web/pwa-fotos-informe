@@ -2,8 +2,6 @@ import {
   getObra,
   getChecklistTypesByObra,
   getChecklistEntriesByObra,
-  getChecklistEntry,
-  updateChecklistEntry,
   getSSMAEntriesByObra,
   getScheduleSnapshotsByObra,
 } from '../db.js';
@@ -16,7 +14,7 @@ import {
   renderBarChartSVG,
 } from '../controlDashboard.js';
 import { isSignedIn } from '../googleDrive.js';
-import { syncChecklistFromDrive, syncSSMAFromDrive, syncAvanceFromDrive, uploadChecklistEntry } from '../controlSync.js';
+import { syncChecklistFromDrive, syncSSMAFromDrive, syncAvanceFromDrive } from '../controlSync.js';
 import { navigate } from '../router.js';
 import { escapeHTML, toast } from '../utils.js';
 
@@ -131,7 +129,7 @@ export async function renderControlObraView(container, obraId) {
                   <span class="incumplimiento-meta">${formatDateEs(it.date)} — ${STATUS_LABEL[it.status] || it.status}</span>
                   ${it.observacion ? `<span class="incumplimiento-observacion">"${escapeHTML(it.observacion)}"</span>` : ''}
                 </div>
-                <button type="button" class="btn btn-secondary incumplimiento-resolve-btn" data-entry-id="${it.entryId}" data-item-index="${it.itemIndex}">Marcar resuelto</button>
+                <button type="button" class="btn btn-secondary incumplimiento-resolve-btn" data-type-key="${it.typeKey}" data-date="${it.date}" data-item-index="${it.itemIndex}">Resolver</button>
               </div>
             `).join('')}
           </section>
@@ -169,20 +167,16 @@ export async function renderControlObraView(container, obraId) {
     });
 
     container.querySelectorAll('.incumplimiento-resolve-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const entryId = btn.dataset.entryId;
-        const itemIndex = Number(btn.dataset.itemIndex);
-        const entry = await getChecklistEntry(entryId);
-        if (!entry) return;
-        entry.items[itemIndex].resolved = true;
-        const updated = await updateChecklistEntry(entryId, { items: entry.items });
-        if (obra.checklistDriveFolderId) {
-          const type = data.types.find((t) => t.id === updated.checklistTypeId);
-          if (type) uploadChecklistEntry(obra.checklistDriveFolderId, type.key, updated);
-        }
-        toast('Marcado como resuelto.');
-        data = await loadData();
-        paint();
+      btn.addEventListener('click', () => {
+        // Lleva directo al ítem exacto (misma pestaña/día) para revisarlo
+        // en contexto antes de resolverlo — no lo marca resuelto a ciegas
+        // desde acá.
+        const params = new URLSearchParams({
+          type: btn.dataset.typeKey,
+          date: btn.dataset.date,
+          item: btn.dataset.itemIndex,
+        });
+        navigate(`/control/obra/${obraId}/checklist?${params.toString()}`);
       });
     });
   }

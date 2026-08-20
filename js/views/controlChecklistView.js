@@ -16,7 +16,7 @@ import {
 import { DEFAULT_CHECKLIST_TYPES, CHECKLIST_STATUS } from '../controlChecklistTemplates.js';
 import { openFolderPicker, isSignedIn } from '../googleDrive.js';
 import { uploadChecklistEntry, syncChecklistFromDrive } from '../controlSync.js';
-import { navigate } from '../router.js';
+import { navigate, getQueryParams } from '../router.js';
 import { escapeHTML, downscaleImageBlob, confirmDialog, toast, promptDialog } from '../utils.js';
 
 function todayLocalISO() {
@@ -65,11 +65,18 @@ export async function renderControlChecklistView(container, obraId) {
     types.sort((a, b) => a.order - b.order);
   }
 
-  let activeTypeId = types[0].id;
+  // Deep link desde el Dashboard ("Resolver" en un pendiente): abre
+  // directo en el tipo/fecha/ítem exacto que falta revisar, en vez de
+  // arrancar siempre en el tipo por defecto y el día de hoy.
+  const deepLink = getQueryParams();
+  const deepLinkType = types.find((t) => t.key === deepLink.get('type'));
+
+  let activeTypeId = deepLinkType?.id || types[0].id;
   let entries = [];
   let entry = null;
   let photos = [];
   let editingItems = false;
+  let highlightItemIndex = deepLink.has('item') ? Number(deepLink.get('item')) : null;
 
   function activeType() {
     return types.find((t) => t.id === activeTypeId);
@@ -93,7 +100,8 @@ export async function renderControlChecklistView(container, obraId) {
     photos = await getChecklistPhotosByEntry(e.id);
   }
 
-  await loadEntryForDate(todayLocalISO());
+  entries = await getChecklistEntriesByType(activeTypeId);
+  await loadEntryForDate(deepLink.get('date') || todayLocalISO());
 
   async function syncFromDrive({ auto }) {
     if (!obra.checklistDriveFolderId) return;
@@ -170,7 +178,7 @@ export async function renderControlChecklistView(container, obraId) {
           </section>
         ` : `
           <section class="control-point-list" id="control-point-list">
-            ${entry.items.map((it, i) => renderChecklistItemRow(it, i)).join('')}
+            ${entry.items.map((it, i) => renderChecklistItemRow(it, i, i === highlightItemIndex)).join('')}
           </section>
 
           <section class="protocol-photos">
@@ -298,7 +306,10 @@ export async function renderControlChecklistView(container, obraId) {
       const index = Number(row.dataset.index);
       entry.items[index].status = select.value || null;
       entry = await updateChecklistEntry(entry.id, { items: entry.items });
-      if (obra.checklistDriveFolderId) uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
+      if (obra.checklistDriveFolderId) {
+        const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
+        if (!ok) toast('⚠️ No se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
+      }
     });
 
     // Observación: se guarda con un pequeño retraso mientras se escribe
@@ -314,7 +325,10 @@ export async function renderControlChecklistView(container, obraId) {
       observacionTimer = setTimeout(async () => {
         entry.items[index].observacion = value;
         entry = await updateChecklistEntry(entry.id, { items: entry.items });
-        if (obra.checklistDriveFolderId) uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
+        if (obra.checklistDriveFolderId) {
+          const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
+          if (!ok) toast('⚠️ No se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
+        }
       }, 500);
     });
 
@@ -355,14 +369,37 @@ export async function renderControlChecklistView(container, obraId) {
         container.querySelector('#control-point-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
+
+    container.querySelectorAll('.checklist-resolve-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.dataset.resolveIndex);
+        entry.items[idx].resolved = true;
+        entry = await updateChecklistEntry(entry.id, { items: entry.items });
+        if (obra.checklistDriveFolderId) {
+          const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
+          if (!ok) toast('⚠️ Se marcó resuelto, pero no se pudo subir a Drive (se reintenta después).');
+        }
+        toast('Marcado como resuelto.');
+        paint();
+      });
+    });
+
+    // Si se llegó acá desde "Resolver" en el Dashboard, hace scroll al
+    // ítem exacto una sola vez (no en cada repintado posterior).
+    if (highlightItemIndex !== null) {
+      const row = container.querySelector(`.control-point-row[data-index="${highlightItemIndex}"]`);
+      row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      highlightItemIndex = null;
+    }
   }
 
   paint();
 }
 
-function renderChecklistItemRow(item, index) {
+function renderChecklistItemRow(item, index, highlighted) {
+  const pending = item.status && item.status !== 'SI' && item.status !== 'N_A' && !item.resolved;
   return `
-    <div class="control-point-row" data-index="${index}">
+    <div class="control-point-row${highlighted ? ' control-point-highlighted' : ''}" data-index="${index}">
       <div class="control-point-label">${index + 1}. ${escapeHTML(item.label)}</div>
       ${item.nota ? `<div class="control-point-instruction">${escapeHTML(item.nota)}</div>` : ''}
       <select class="checklist-status-select">
@@ -370,6 +407,8 @@ function renderChecklistItemRow(item, index) {
         ${CHECKLIST_STATUS.map((s) => `<option value="${s.id}" ${item.status === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}
       </select>
       <input type="text" class="checklist-observacion-input" placeholder="Observación (opcional)" maxlength="300" value="${escapeHTML(item.observacion || '')}" />
+      ${pending ? `<button type="button" class="btn btn-secondary checklist-resolve-btn" data-resolve-index="${index}">✅ Marcar resuelto</button>` : ''}
+      ${item.resolved ? `<div class="checklist-resolved-tag">✅ Resuelto</div>` : ''}
     </div>
   `;
 }

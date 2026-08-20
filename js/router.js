@@ -28,7 +28,21 @@ export function navigate(path) {
 
 function currentPath() {
   const hash = window.location.hash.slice(1);
-  return hash || '/';
+  const [path] = hash.split('?');
+  return path || '/';
+}
+
+/**
+ * Parámetros extra después del "?" en el hash (ej. "#/control/obra/1/
+ * checklist?type=ssma&date=2026-08-20") — separado de los parámetros de
+ * ruta (:obraId) para no complicar el matching de patrones existente. Se
+ * usa para "deep links" puntuales, como abrir el checklist ya en el ítem
+ * exacto que falta resolver.
+ */
+export function getQueryParams() {
+  const hash = window.location.hash.slice(1);
+  const qIndex = hash.indexOf('?');
+  return new URLSearchParams(qIndex >= 0 ? hash.slice(qIndex + 1) : '');
 }
 
 function resolve() {

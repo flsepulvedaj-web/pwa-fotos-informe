@@ -42,6 +42,7 @@ export function computePersonalKPI(ssmaEntries) {
  */
 export function computeChecklistKPI(entries, types) {
   const typeTitleById = new Map(types.map((t) => [t.id, t.title]));
+  const typeKeyById = new Map(types.map((t) => [t.id, t.key]));
   const cutoff = Date.now() - 30 * DAY_MS;
 
   let evaluated = 0;
@@ -61,6 +62,7 @@ export function computeChecklistKPI(entries, types) {
           entryId: entry.id,
           itemIndex,
           typeTitle: typeTitleById.get(entry.checklistTypeId) || '—',
+          typeKey: typeKeyById.get(entry.checklistTypeId) || '',
           date: entry.date,
           label: item.label,
           status: item.status,

@@ -72,9 +72,11 @@ async function readJSONFile(fileId) {
 
 /** Sube (best-effort) el registro de Personal de un día a Drive. No lanza
  * error si falla — el guardado local ya se hizo, esto es solo el respaldo
- * compartido; si falla por falta de señal, queda para la próxima sync. */
+ * compartido. Devuelve true/false para que la pantalla pueda avisar si no
+ * se pudo subir (antes fallaba calladito y no había forma de notar que
+ * Drive no se estaba actualizando). */
 export async function uploadSSMAEntry(folderId, entry) {
-  if (!folderId) return;
+  if (!folderId) return false;
   try {
     const b = ssmaEntryBreakdown(entry);
     await uploadJSON(folderId, `${entry.date}.json`, {
@@ -85,8 +87,10 @@ export async function uploadSSMAEntry(folderId, entry) {
       nota: entry.nota,
       updatedAt: entry.updatedAt,
     });
+    return true;
   } catch (err) {
     console.error('No se pudo subir el registro de personal a Drive:', err);
+    return false;
   }
 }
 
@@ -137,7 +141,7 @@ export async function syncSSMAFromDrive(obraId, folderId) {
  * checklist correcto en CUALQUIER dispositivo que sincronice esta carpeta.
  */
 export async function uploadChecklistEntry(folderId, typeKey, entry) {
-  if (!folderId) return;
+  if (!folderId) return false;
   try {
     await uploadJSON(folderId, `${typeKey}-${entry.date}.json`, {
       typeKey,
@@ -145,8 +149,10 @@ export async function uploadChecklistEntry(folderId, typeKey, entry) {
       items: entry.items,
       updatedAt: entry.updatedAt,
     });
+    return true;
   } catch (err) {
     console.error('No se pudo subir el checklist a Drive:', err);
+    return false;
   }
 }
 

@@ -216,7 +216,10 @@ export async function renderControlSSMAView(container, obraId) {
         }
       }
 
-      if (obra.personalDriveFolderId) uploadSSMAEntry(obra.personalDriveFolderId, saved);
+      if (obra.personalDriveFolderId) {
+        const ok = await uploadSSMAEntry(obra.personalDriveFolderId, saved);
+        if (!ok) toast('⚠️ No se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
+      }
 
       entries = await getSSMAEntriesByObra(obraId);
       paint();

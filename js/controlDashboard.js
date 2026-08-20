@@ -64,6 +64,7 @@ export function computeChecklistKPI(entries, types) {
           date: entry.date,
           label: item.label,
           status: item.status,
+          observacion: item.observacion || '',
         });
       }
     });

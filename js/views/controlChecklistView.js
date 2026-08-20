@@ -301,6 +301,23 @@ export async function renderControlChecklistView(container, obraId) {
       if (obra.checklistDriveFolderId) uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
     });
 
+    // Observación: se guarda con un pequeño retraso mientras se escribe
+    // (mismo patrón que las Observaciones de Protocolos), no letra por letra.
+    let observacionTimer = null;
+    container.querySelector('#control-point-list').addEventListener('input', (e) => {
+      const input = e.target.closest('.checklist-observacion-input');
+      if (!input) return;
+      const row = input.closest('.control-point-row');
+      const index = Number(row.dataset.index);
+      const value = input.value;
+      clearTimeout(observacionTimer);
+      observacionTimer = setTimeout(async () => {
+        entry.items[index].observacion = value;
+        entry = await updateChecklistEntry(entry.id, { items: entry.items });
+        if (obra.checklistDriveFolderId) uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
+      }, 500);
+    });
+
     const photoInput = container.querySelector('#checklist-photo-input');
     container.querySelector('#btn-add-photos').addEventListener('click', () => photoInput.click());
     photoInput.addEventListener('change', async () => {
@@ -352,6 +369,7 @@ function renderChecklistItemRow(item, index) {
         <option value="">— Elegir estado —</option>
         ${CHECKLIST_STATUS.map((s) => `<option value="${s.id}" ${item.status === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}
       </select>
+      <input type="text" class="checklist-observacion-input" placeholder="Observación (opcional)" maxlength="300" value="${escapeHTML(item.observacion || '')}" />
     </div>
   `;
 }

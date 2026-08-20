@@ -129,6 +129,7 @@ export async function renderControlObraView(container, obraId) {
                   <span class="incumplimiento-tag">${escapeHTML(it.typeTitle)}</span>
                   <span class="incumplimiento-label">${escapeHTML(it.label)}</span>
                   <span class="incumplimiento-meta">${formatDateEs(it.date)} — ${STATUS_LABEL[it.status] || it.status}</span>
+                  ${it.observacion ? `<span class="incumplimiento-observacion">"${escapeHTML(it.observacion)}"</span>` : ''}
                 </div>
                 <button type="button" class="btn btn-secondary incumplimiento-resolve-btn" data-entry-id="${it.entryId}" data-item-index="${it.itemIndex}">Marcar resuelto</button>
               </div>

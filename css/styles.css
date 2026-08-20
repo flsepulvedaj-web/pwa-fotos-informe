@@ -1969,6 +1969,18 @@ button {
   font-family: inherit;
 }
 
+.checklist-observacion-input {
+  margin-top: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 13px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+}
+
 .checklist-item-editor {
   display: flex;
   flex-direction: column;
@@ -2260,6 +2272,12 @@ button {
 .incumplimiento-meta {
   font-size: 11px;
   color: var(--color-text-muted);
+}
+
+.incumplimiento-observacion {
+  font-size: 12px;
+  color: var(--color-text);
+  font-style: italic;
 }
 
 .incumplimiento-resolve-btn {

@@ -15,6 +15,8 @@ import { renderControlSSMAView } from './views/controlSSMAView.js';
 import { renderControlChecklistView } from './views/controlChecklistView.js';
 import { renderControlAvanceView } from './views/controlAvanceView.js';
 import { renderPermissionsAdminView } from './views/permissionsAdminView.js';
+import { renderBancoHomeView } from './views/bancoHomeView.js';
+import { renderProyectosHomeView } from './views/proyectosHomeView.js';
 
 const appEl = document.getElementById('app');
 
@@ -22,7 +24,12 @@ initSync();
 
 registerRoute('/', () => renderHomeView(appEl));
 
-// Módulo Proyectos (fotos → informe PDF).
+// Macro módulos (agrupan los módulos reales de abajo).
+registerRoute('/banco', () => renderBancoHomeView(appEl));
+registerRoute('/proyectos', () => renderProyectosHomeView(appEl));
+
+// Módulo Avance de obra (ex "Proyectos"; fotos → informe PDF). La ruta
+// interna sigue siendo /fotos — solo cambió el nombre que ve el usuario.
 registerRoute('/fotos', () => renderFoldersView(appEl, ROOT_ID));
 registerRoute('/fotos/folder/:id', ({ id }) => renderFoldersView(appEl, id));
 registerRoute('/fotos/camera/:folderId', ({ folderId }) => renderCameraView(appEl, folderId === 'root' ? ROOT_ID : folderId));

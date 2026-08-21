@@ -52,7 +52,7 @@ export async function renderProtocolHomeView(container) {
     </div>
   `;
 
-  container.querySelector('#btn-back-home').addEventListener('click', () => navigate('/'));
+  container.querySelector('#btn-back-home').addEventListener('click', () => navigate('/proyectos'));
   container.querySelector('#btn-drafts').addEventListener('click', () => navigate('/protocolos/en-curso'));
 
   container.querySelectorAll('.obra-tile').forEach((tile) => {

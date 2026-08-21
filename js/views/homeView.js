@@ -3,8 +3,13 @@ import { isSignedIn, signIn, signOut, getSignedInEmail } from '../googleDrive.js
 import { APP_MODULES, isAdmin, modulesForEmail, fetchPermissions, getCachedPermissions } from '../permissions.js';
 import { toast } from '../utils.js';
 
-const MODULE_ROUTES = { fotos: '/fotos', protocolos: '/protocolos', control: '/control' };
-const MODULE_ICONS = { fotos: '📷', protocolos: '📋', control: '🎛️' };
+// Home ya no muestra los módulos reales directo — muestra 2 "macro
+// módulos" (Banco / Proyectos) que agrupan los módulos con permiso propio
+// + placeholders "Próximamente" sin desarrollar todavía.
+const HUBS = [
+  { id: 'banco', route: '/banco', icon: '🏦', title: 'Banco', desc: 'Avance de obra, informes técnicos y research', modules: ['fotos'] },
+  { id: 'proyectos', route: '/proyectos', icon: '📁', title: 'Proyectos', desc: 'Protocolos, Control y zonificación', modules: ['protocolos', 'control'] },
+];
 
 /**
  * Pantalla de inicio: primero pide iniciar sesión con Google (así se sabe
@@ -70,7 +75,7 @@ function renderLoginGate(container) {
 function paintModules(container, email, permissions) {
   const allowed = modulesForEmail(email, permissions);
   const admin = isAdmin(email);
-  const visibleModules = APP_MODULES.filter((m) => allowed.includes(m.id));
+  const visibleHubs = HUBS.filter((h) => h.modules.some((m) => allowed.includes(m)));
 
   container.innerHTML = `
     <div class="home-view">
@@ -79,13 +84,13 @@ function paintModules(container, email, permissions) {
         <h1>Vizor Reports</h1>
         ${admin ? '<button type="button" class="home-admin-link" id="btn-admin-users">⚙️ Administrar usuarios</button>' : ''}
       </header>
-      ${visibleModules.length ? `
+      ${visibleHubs.length ? `
         <main class="home-modules">
-          ${visibleModules.map((m) => `
-            <button type="button" class="module-card" data-module="${m.id}">
-              <span class="module-icon">${MODULE_ICONS[m.id]}</span>
-              <span class="module-title">${m.title}</span>
-              <span class="module-desc">${m.desc}</span>
+          ${visibleHubs.map((h) => `
+            <button type="button" class="module-card" data-hub="${h.id}">
+              <span class="module-icon">${h.icon}</span>
+              <span class="module-title">${h.title}</span>
+              <span class="module-desc">${h.desc}</span>
             </button>
           `).join('')}
         </main>
@@ -100,7 +105,8 @@ function paintModules(container, email, permissions) {
   `;
 
   container.querySelectorAll('.module-card').forEach((card) => {
-    card.addEventListener('click', () => navigate(MODULE_ROUTES[card.dataset.module]));
+    const hub = HUBS.find((h) => h.id === card.dataset.hub);
+    card.addEventListener('click', () => navigate(hub.route));
   });
 
   container.querySelector('#btn-admin-users')?.addEventListener('click', () => navigate('/usuarios'));

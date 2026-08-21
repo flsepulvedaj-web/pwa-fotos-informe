@@ -388,7 +388,7 @@ export async function renderFoldersView(container, folderId) {
 
   // En la raíz no hay carpeta padre a la que "subir" — sin este botón no
   // había forma de volver al Inicio salvo cerrando la app entera.
-  container.querySelector('#btn-back-home')?.addEventListener('click', () => navigate('/'));
+  container.querySelector('#btn-back-home')?.addEventListener('click', () => navigate('/banco'));
 
   const btnDriveSettings = container.querySelector('#btn-drive-settings');
   if (btnDriveSettings) {

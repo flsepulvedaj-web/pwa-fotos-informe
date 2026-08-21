@@ -45,7 +45,7 @@ export async function renderControlHomeView(container) {
       </div>
     `;
 
-    container.querySelector('#btn-back-home').addEventListener('click', () => navigate('/'));
+    container.querySelector('#btn-back-home').addEventListener('click', () => navigate('/proyectos'));
 
     container.querySelectorAll('.obra-tile').forEach((tile) => {
       tile.addEventListener('click', () => navigate(`/control/obra/${tile.dataset.obraId}`));

@@ -7,8 +7,8 @@ const LAST_FORMAT_KEY = 'export-last-format';
 const MAX_PHOTOS_PER_UNIT = 4; // tope de fotos por casa/depto que se manda a comparar (costo/tamaño del pedido)
 
 // URL del Cloudflare Worker que hace la comparación con IA (ver
-// len-reports-ai-backend/ — proyecto aparte de este repo).
-const AI_BACKEND_URL = 'https://len-reports-ai-avance.flsepulvedaj.workers.dev/compare-progress';
+// vizor-reports-ai-backend/ — proyecto aparte de este repo).
+const AI_BACKEND_URL = 'https://vizor-reports-ai-avance.flsepulvedaj.workers.dev/compare-progress';
 
 /**
  * ¿Esta carpeta está armada como grupo "Calle X" / "Piso Y" para el

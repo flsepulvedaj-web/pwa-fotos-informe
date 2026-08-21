@@ -1251,6 +1251,13 @@ button {
 
 .module-icon {
   font-size: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hub-icon-svg {
+  display: block;
 }
 
 .module-title {

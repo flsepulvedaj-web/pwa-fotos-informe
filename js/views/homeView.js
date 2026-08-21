@@ -3,12 +3,39 @@ import { isSignedIn, signIn, signOut, getSignedInEmail } from '../googleDrive.js
 import { APP_MODULES, isAdmin, modulesForEmail, fetchPermissions, getCachedPermissions } from '../permissions.js';
 import { toast } from '../utils.js';
 
+// Ícono propio (engranaje + lápiz) para "Proyectos" en vez de una carpeta
+// genérica — Pancho lo pidió explícitamente ("no me gusta que sea una
+// carpeta"). El engranaje va en el naranja de la marca; el lápiz usa
+// var(--color-text) para que se vea bien en modo claro y oscuro (un navy
+// fijo casi desaparecía contra la tarjeta en modo oscuro).
+const PROYECTOS_ICON = `
+  <svg viewBox="0 0 100 100" width="34" height="34" class="hub-icon-svg" aria-hidden="true">
+    <g transform="translate(50,50)">
+      <rect x="-3.5" y="-40" width="7" height="12" rx="1" fill="#FF4A00"/>
+      <rect x="-3.5" y="-40" width="7" height="12" rx="1" fill="#FF4A00" transform="rotate(45)"/>
+      <rect x="-3.5" y="-40" width="7" height="12" rx="1" fill="#FF4A00" transform="rotate(90)"/>
+      <rect x="-3.5" y="-40" width="7" height="12" rx="1" fill="#FF4A00" transform="rotate(135)"/>
+      <rect x="-3.5" y="-40" width="7" height="12" rx="1" fill="#FF4A00" transform="rotate(180)"/>
+      <rect x="-3.5" y="-40" width="7" height="12" rx="1" fill="#FF4A00" transform="rotate(225)"/>
+      <rect x="-3.5" y="-40" width="7" height="12" rx="1" fill="#FF4A00" transform="rotate(270)"/>
+      <rect x="-3.5" y="-40" width="7" height="12" rx="1" fill="#FF4A00" transform="rotate(315)"/>
+      <circle cx="0" cy="0" r="30" fill="#FF4A00"/>
+      <circle cx="0" cy="0" r="15" fill="var(--color-surface)"/>
+      <g transform="rotate(45)">
+        <rect x="-5" y="-46" width="10" height="63" rx="1.5" fill="var(--color-text)"/>
+        <polygon points="-5,17 5,17 0,34" fill="var(--color-text)"/>
+        <rect x="-5" y="-51" width="10" height="7" rx="1.5" fill="#FF4A00"/>
+      </g>
+    </g>
+  </svg>
+`;
+
 // Home ya no muestra los módulos reales directo — muestra 2 "macro
 // módulos" (Banco / Proyectos) que agrupan los módulos con permiso propio
 // + placeholders "Próximamente" sin desarrollar todavía.
 const HUBS = [
   { id: 'banco', route: '/banco', icon: '🏦', title: 'Banco', desc: 'Avance de obra, informes técnicos y research', modules: ['fotos'] },
-  { id: 'proyectos', route: '/proyectos', icon: '📁', title: 'Proyectos', desc: 'Protocolos, Control y zonificación', modules: ['protocolos', 'control'] },
+  { id: 'proyectos', route: '/proyectos', icon: PROYECTOS_ICON, title: 'Proyectos', desc: 'Protocolos, Control y zonificación', modules: ['protocolos', 'control'] },
 ];
 
 /**

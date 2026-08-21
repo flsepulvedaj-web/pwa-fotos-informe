@@ -100,6 +100,7 @@ export async function renderFoldersView(container, folderId) {
 
   container.innerHTML = `
     <header class="app-header">
+      ${folderId === ROOT_ID ? '<button class="icon-btn" id="btn-back-home" title="Volver al inicio">←</button>' : ''}
       <nav class="breadcrumbs" id="breadcrumbs"></nav>
       <div class="header-actions">
         ${folderId !== ROOT_ID ? '<button class="icon-btn" id="btn-folder-menu" title="Opciones de la carpeta">⋮</button>' : ''}
@@ -384,6 +385,10 @@ export async function renderFoldersView(container, folderId) {
   if (btnFolderMenu) {
     btnFolderMenu.addEventListener('click', () => openFolderMenu(currentFolder));
   }
+
+  // En la raíz no hay carpeta padre a la que "subir" — sin este botón no
+  // había forma de volver al Inicio salvo cerrando la app entera.
+  container.querySelector('#btn-back-home')?.addEventListener('click', () => navigate('/'));
 
   const btnDriveSettings = container.querySelector('#btn-drive-settings');
   if (btnDriveSettings) {

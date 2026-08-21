@@ -280,10 +280,12 @@ export async function movePhotos(ids, targetFolderId) {
 
 export async function createObra(name) {
   const store = await tx('obras', 'readwrite');
+  const now = Date.now();
   const obra = {
     id: uuid(),
     name,
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     driveObraFolderId: null,
     driveObraFolderName: null,
     planosDriveFolderId: null,
@@ -293,6 +295,19 @@ export async function createObra(name) {
   };
   await wrap(store.add(obra));
   return obra;
+}
+
+/**
+ * Crea o reemplaza una obra completa CON UN ID DADO (no genera uno nuevo)
+ * — se usa al sincronizar la lista de obras desde Drive: si Pancho crea
+ * "File 589 Loncoche" en su teléfono, el de Jessi debe terminar con una
+ * obra local que tenga EXACTAMENTE el mismo id, no una copia con id propio
+ * (si no, cada carpeta de Drive vinculada quedaría separada por persona).
+ */
+export async function upsertObra(obraData) {
+  const store = await tx('obras', 'readwrite');
+  await wrap(store.put(obraData));
+  return obraData;
 }
 
 export async function getObra(id) {
@@ -310,7 +325,7 @@ export async function updateObra(id, changes) {
   const store = await tx('obras', 'readwrite');
   const obra = await wrap(store.get(id));
   if (!obra) return null;
-  Object.assign(obra, changes);
+  Object.assign(obra, changes, { updatedAt: Date.now() });
   await wrap(store.put(obra));
   return obra;
 }

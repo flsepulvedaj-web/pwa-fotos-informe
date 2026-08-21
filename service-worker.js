@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v76';
+const CACHE_VERSION = 'v77';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -21,6 +21,7 @@ const APP_SHELL = [
   './js/controlDashboard.js',
   './js/controlSync.js',
   './js/permissions.js',
+  './js/obraSync.js',
   './js/googleDrive.js',
   './js/sync.js',
   './js/views/homeView.js',

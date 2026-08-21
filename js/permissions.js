@@ -6,11 +6,9 @@
 // funcionando sin internet una vez que se cargó la primera vez.
 import { DEFAULT_ROOT_FOLDER, findFileByName, updateFileContent, uploadFile, downloadDriveFile } from './googleDrive.js';
 
-// Único admin por ahora — ve todos los módulos siempre y puede editar los
-// permisos del resto. (Jessi no es admin del sistema todavía — si alguien
-// sin acceso pregunta, se le dice que le pida acceso a Pancho o a ella,
-// pero el control real de permisos lo maneja Pancho.)
-export const ADMIN_EMAILS = ['flsepulvedaj@gmail.com'];
+// Admins: ven todos los módulos siempre y pueden editar los permisos del
+// resto desde /usuarios.
+export const ADMIN_EMAILS = ['flsepulvedaj@gmail.com', 'jzruiz5@gmail.com'];
 
 export const APP_MODULES = [
   { id: 'fotos', title: 'Proyectos', desc: 'Fotos de obra → informe PDF' },

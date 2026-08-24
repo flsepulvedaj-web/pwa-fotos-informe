@@ -13,11 +13,12 @@ export async function renderProyectosHomeView(container) {
 
   const protocolosOk = allowed.includes('protocolos');
   const controlOk = allowed.includes('control');
-  const costosOk = allowed.includes('costos');
+  // Costos NO tiene tarjeta acá — vive adentro de Control como sección
+  // protegida ("dato rosa", ver controlObraView.js), no como módulo propio
+  // del hub Proyectos.
   const sections = [
     { route: protocolosOk ? '/protocolos' : null, icon: '📋', title: 'Protocolos', desc: 'Checklist de calidad + firma digital', ready: protocolosOk },
     { route: controlOk ? '/control' : null, icon: '🎛️', title: 'Control', desc: 'Programación, SSMA, actas y KPI de obra', ready: controlOk },
-    { route: costosOk ? '/costos' : null, icon: '💰', title: 'Costos', desc: 'Presupuesto, modificaciones, facturación y reembolsos', ready: costosOk },
     { route: null, icon: '📍', title: 'Zona', desc: 'Próximamente', ready: false },
   ];
 

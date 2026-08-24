@@ -13,8 +13,9 @@ import {
   renderLineChartSVG,
   renderBarChartSVG,
 } from '../controlDashboard.js';
-import { isSignedIn } from '../googleDrive.js';
+import { isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { syncChecklistFromDrive, syncSSMAFromDrive, syncAvanceFromDrive } from '../controlSync.js';
+import { modulesForEmail, getCachedPermissions } from '../permissions.js';
 import { navigate } from '../router.js';
 import { escapeHTML, toast } from '../utils.js';
 
@@ -39,10 +40,20 @@ export async function renderControlObraView(container, obraId) {
     return;
   }
 
+  // Costos es "dato rosa": vive adentro de Control (no es un módulo aparte
+  // en el hub de Proyectos) pero sigue protegido con su propio permiso —
+  // alguien con acceso a Control (ej. el ITO en terreno) no ve esta tarjeta
+  // a menos que además tenga el permiso 'costos'. Por eso NI SIQUIERA se
+  // agrega al arreglo si no corresponde (a diferencia de "Actas", que se
+  // muestra griseada como "Próximamente" — acá directamente no existe para
+  // quien no debe verla).
+  const email = await getSignedInEmail();
+  const allowedModules = modulesForEmail(email, getCachedPermissions());
   const sections = [
     { id: 'personal', icon: '👷', title: 'Personal en obra', desc: 'Directo, indirecto y subcontratos', ready: true },
     { id: 'checklist', icon: '✅', title: 'Checklist diario', desc: 'SSMA, Faenas y Programación', ready: true },
     { id: 'avance', icon: '📅', title: 'Avance programado', desc: 'Importar programación desde Project', ready: true },
+    ...(allowedModules.includes('costos') ? [{ id: 'costos', icon: '💰', title: 'Costos', desc: 'Presupuesto, modificaciones, facturación y reembolsos', ready: true }] : []),
     { id: 'actas', icon: '📝', title: 'Actas de reunión', desc: 'Asistentes, temas, acuerdos', ready: false },
   ];
 
@@ -153,6 +164,8 @@ export async function renderControlObraView(container, obraId) {
           navigate(`/control/obra/${obraId}/checklist`);
         } else if (section === 'avance') {
           navigate(`/control/obra/${obraId}/avance`);
+        } else if (section === 'costos') {
+          navigate(`/costos/obra/${obraId}`);
         }
         // Las demás secciones todavía no tienen vista — no hacen nada al
         // tocarlas (quedan visibles para mostrar el mapa completo del módulo).

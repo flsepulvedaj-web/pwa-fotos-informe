@@ -33,7 +33,7 @@ import { escapeHTML, toast } from '../utils.js';
 export async function renderCostosObraView(container, obraId) {
   const obra = await getObra(obraId);
   if (!obra) {
-    navigate('/costos');
+    navigate('/control');
     return;
   }
 
@@ -125,7 +125,7 @@ export async function renderCostosObraView(container, obraId) {
       </main>
     `;
 
-    container.querySelector('#btn-back').addEventListener('click', () => navigate('/costos'));
+    container.querySelector('#btn-back').addEventListener('click', () => navigate(`/control/obra/${obraId}`));
 
     container.querySelectorAll('[data-section]').forEach((card) => {
       card.addEventListener('click', () => navigate(`/costos/obra/${obraId}/${card.dataset.section}`));

@@ -18,6 +18,8 @@ import { renderCostosObraView } from './views/costosObraView.js';
 import { renderRdiObraView } from './views/rdiObraView.js';
 import { renderSubcontratosView } from './views/subcontratosView.js';
 import { renderOrganismosView } from './views/organismosView.js';
+import { renderInformeSemanalObraView } from './views/informeSemanalObraView.js';
+import { renderInformeSemanalFormView } from './views/informeSemanalFormView.js';
 import { renderCostosContratoView } from './views/costosContratoView.js';
 import { renderCostosModificacionesView } from './views/costosModificacionesView.js';
 import { renderCostosFacturacionView } from './views/costosFacturacionView.js';
@@ -70,6 +72,11 @@ registerRoute('/rdi/obra/:obraId', ({ obraId }) => renderRdiObraView(appEl, obra
 // Módulos chicos (directorio, sin permiso propio — ver nota en controlObraView.js).
 registerRoute('/subcontratos/obra/:obraId', ({ obraId }) => renderSubcontratosView(appEl, obraId));
 registerRoute('/organismos/obra/:obraId', ({ obraId }) => renderOrganismosView(appEl, obraId));
+
+// Informe Semanal (acta + compilado + PDF) — reemplaza el placeholder
+// "Actas de reunión". Mismo patrón 2 niveles que Protocolos.
+registerRoute('/informe-semanal/obra/:obraId', ({ obraId }) => renderInformeSemanalObraView(appEl, obraId));
+registerRoute('/informe-semanal/instancia/:id', ({ id }) => renderInformeSemanalFormView(appEl, id));
 registerRoute('/costos/obra/:obraId/contrato', ({ obraId }) => renderCostosContratoView(appEl, obraId));
 registerRoute('/costos/obra/:obraId/modificaciones', ({ obraId }) => renderCostosModificacionesView(appEl, obraId));
 registerRoute('/costos/obra/:obraId/facturacion', ({ obraId }) => renderCostosFacturacionView(appEl, obraId));

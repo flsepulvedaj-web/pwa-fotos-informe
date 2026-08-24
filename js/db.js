@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -135,6 +135,14 @@ function openDB() {
       if (!db.objectStoreNames.contains('organismosPublicos')) {
         const organismosPublicos = db.createObjectStore('organismosPublicos', { keyPath: 'id' });
         organismosPublicos.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      // Informe Semanal (v8): acta de reunión (participantes, temas,
+      // firmas) + compilado de KPI de los demás módulos, exportado a PDF.
+      // Reemplaza el placeholder "Actas de reunión" de Control.
+      if (!db.objectStoreNames.contains('informesSemanales')) {
+        const informesSemanales = db.createObjectStore('informesSemanales', { keyPath: 'id' });
+        informesSemanales.createIndex('by_obraId', 'obraId', { unique: false });
       }
     };
 
@@ -1087,4 +1095,66 @@ export async function updateOrganismoTramite(id, changes, { updatedAt = Date.now
 export async function deleteOrganismoTramite(id) {
   const store = await tx('organismosPublicos', 'readwrite');
   await wrap(store.delete(id));
+}
+
+// ---------- Informe Semanal ----------
+
+export async function createInformeSemanal({ obraId, fecha, lugar = '', horaInicio = '', reunionTitulo = '' }) {
+  const store = await tx('informesSemanales', 'readwrite');
+  const now = Date.now();
+  const informe = {
+    id: uuid(),
+    obraId,
+    fecha, // 'YYYY-MM-DD'
+    lugar,
+    horaInicio,
+    reunionTitulo,
+    participantesConstructora: [], // [{ nombre, cargo, iniciales, firmaBlob }]
+    participantesLen: [],
+    temas: [], // [{ punto, responsable }]
+    status: 'draft', // 'draft' | 'emitted'
+    pdfDriveFileId: null,
+    pdfDriveFileName: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await wrap(store.add(informe));
+  return informe;
+}
+
+export async function getInformeSemanal(id) {
+  const store = await tx('informesSemanales', 'readonly');
+  return wrap(store.get(id));
+}
+
+export async function getInformesSemanalesByObra(obraId) {
+  const store = await tx('informesSemanales', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function updateInformeSemanal(id, changes) {
+  const store = await tx('informesSemanales', 'readwrite');
+  const informe = await wrap(store.get(id));
+  if (!informe) return null;
+  Object.assign(informe, changes, { updatedAt: Date.now() });
+  await wrap(store.put(informe));
+  return informe;
+}
+
+export async function deleteInformeSemanal(id) {
+  const store = await tx('informesSemanales', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+/** Todas las fotos del Checklist diario (SSMA/Faenas/Programación juntos)
+ * de una obra, cargadas en checklists con fecha dentro de [fromDate,
+ * toDate] (inclusive, 'YYYY-MM-DD') — para el compilado del Informe
+ * Semanal, que saca sus fotos de ahí en vez de tener captura propia. */
+export async function getChecklistPhotosInRange(obraId, fromDate, toDate) {
+  const entries = await getChecklistEntriesByObra(obraId);
+  const inRange = entries.filter((e) => e.date >= fromDate && e.date <= toDate);
+  const photosByEntry = await Promise.all(inRange.map((e) => getChecklistPhotosByEntry(e.id)));
+  return photosByEntry.flat().sort((a, b) => a.createdAt - b.createdAt);
 }

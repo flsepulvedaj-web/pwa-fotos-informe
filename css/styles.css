@@ -1917,6 +1917,76 @@ button {
   width: auto;
 }
 
+/* Filas editables (agregar/quitar) del Informe Semanal — Participantes y
+   Temas conversados. */
+.acta-row-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.acta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+}
+
+.acta-row input {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+}
+
+.acta-tema-row .acta-input-punto {
+  flex-basis: 220px;
+}
+
+.acta-tema-num {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.acta-firmar-btn {
+  flex: 0 0 auto;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.acta-row-delete {
+  flex: 0 0 auto;
+}
+
+.acta-fotos-title {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.acta-fotos-empty {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.informe-status {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
 .ssma-form-actions {
   display: flex;
   justify-content: flex-end;

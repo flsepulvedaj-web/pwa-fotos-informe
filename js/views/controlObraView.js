@@ -60,7 +60,7 @@ export async function renderControlObraView(container, obraId) {
     // información sensible, así que cualquiera con acceso a Control las ve.
     { id: 'subcontratos', icon: '📇', title: 'Subcontratos', desc: 'Directorio de subcontratos activos', ready: true },
     { id: 'organismos', icon: '🏛️', title: 'Organismos Públicos', desc: 'Estado de trámites (SEC, etc.)', ready: true },
-    { id: 'actas', icon: '📝', title: 'Actas de reunión', desc: 'Asistentes, temas, acuerdos', ready: false },
+    { id: 'informe-semanal', icon: '📑', title: 'Informe Semanal', desc: 'Acta, participantes, temas y compilado de KPI', ready: true },
   ];
 
   async function loadData() {
@@ -178,6 +178,8 @@ export async function renderControlObraView(container, obraId) {
           navigate(`/subcontratos/obra/${obraId}`);
         } else if (section === 'organismos') {
           navigate(`/organismos/obra/${obraId}`);
+        } else if (section === 'informe-semanal') {
+          navigate(`/informe-semanal/obra/${obraId}`);
         }
         // Las demás secciones todavía no tienen vista — no hacen nada al
         // tocarlas (quedan visibles para mostrar el mapa completo del módulo).

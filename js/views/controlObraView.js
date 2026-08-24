@@ -54,6 +54,7 @@ export async function renderControlObraView(container, obraId) {
     { id: 'checklist', icon: '✅', title: 'Checklist diario', desc: 'SSMA, Faenas y Programación', ready: true },
     { id: 'avance', icon: '📅', title: 'Avance programado', desc: 'Importar programación desde Project', ready: true },
     ...(allowedModules.includes('costos') ? [{ id: 'costos', icon: '💰', title: 'Costos', desc: 'Presupuesto, modificaciones, facturación y reembolsos', ready: true }] : []),
+    ...(allowedModules.includes('rdi') ? [{ id: 'rdi', icon: '📨', title: 'RDI', desc: 'Requerimientos de información al mandante', ready: true }] : []),
     { id: 'actas', icon: '📝', title: 'Actas de reunión', desc: 'Asistentes, temas, acuerdos', ready: false },
   ];
 
@@ -166,6 +167,8 @@ export async function renderControlObraView(container, obraId) {
           navigate(`/control/obra/${obraId}/avance`);
         } else if (section === 'costos') {
           navigate(`/costos/obra/${obraId}`);
+        } else if (section === 'rdi') {
+          navigate(`/rdi/obra/${obraId}`);
         }
         // Las demás secciones todavía no tienen vista — no hacen nada al
         // tocarlas (quedan visibles para mostrar el mapa completo del módulo).

@@ -15,6 +15,7 @@ import { renderControlSSMAView } from './views/controlSSMAView.js';
 import { renderControlChecklistView } from './views/controlChecklistView.js';
 import { renderControlAvanceView } from './views/controlAvanceView.js';
 import { renderCostosObraView } from './views/costosObraView.js';
+import { renderRdiObraView } from './views/rdiObraView.js';
 import { renderCostosContratoView } from './views/costosContratoView.js';
 import { renderCostosModificacionesView } from './views/costosModificacionesView.js';
 import { renderCostosFacturacionView } from './views/costosFacturacionView.js';
@@ -58,6 +59,11 @@ registerRoute('/control/obra/:obraId/avance', ({ obraId }) => renderControlAvanc
 // no tiene tarjeta propia en el hub de Proyectos), pero sigue protegido con
 // su propio permiso — ver nota en controlObraView.js.
 registerRoute('/costos/obra/:obraId', ({ obraId }) => renderCostosObraView(appEl, obraId));
+
+// Módulo RDI (requerimientos de información al mandante) — mismo criterio
+// que Costos: se entra desde la obra de Control, no tiene tarjeta propia
+// en el hub de Proyectos, y sigue protegido con su propio permiso.
+registerRoute('/rdi/obra/:obraId', ({ obraId }) => renderRdiObraView(appEl, obraId));
 registerRoute('/costos/obra/:obraId/contrato', ({ obraId }) => renderCostosContratoView(appEl, obraId));
 registerRoute('/costos/obra/:obraId/modificaciones', ({ obraId }) => renderCostosModificacionesView(appEl, obraId));
 registerRoute('/costos/obra/:obraId/facturacion', ({ obraId }) => renderCostosFacturacionView(appEl, obraId));

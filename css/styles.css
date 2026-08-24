@@ -1863,6 +1863,60 @@ button {
   color: var(--color-text);
 }
 
+/* Tabla de frecuencia de respuesta del módulo RDI. */
+.rdi-freq-wrap {
+  margin: 0 16px 20px;
+}
+
+.rdi-freq-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.rdi-freq-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.rdi-freq-table th,
+.rdi-freq-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+
+.rdi-freq-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.rdi-freq-table tr:last-child td {
+  border-bottom: none;
+}
+
+.ssma-form .rdi-checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text);
+  font-size: 15px;
+  margin-bottom: 0;
+}
+
+.ssma-form .rdi-checkbox-label input[type="checkbox"] {
+  width: auto;
+}
+
 .ssma-form-actions {
   display: flex;
   justify-content: flex-end;

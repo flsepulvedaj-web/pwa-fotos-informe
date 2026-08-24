@@ -22,6 +22,10 @@ export const APP_MODULES = [
   // sensible (plata del contrato) — no todo el que ve Control (ej. el ITO
   // en terreno) debería ver esto también.
   { id: 'costos', title: 'Costos', desc: 'Presupuesto, modificaciones, facturación y reembolsos' },
+  // RDI también permiso propio, pero por otra razón: no es plata, es que
+  // puede tener sentido dárselo a alguien en terreno (quien redacta el RDI)
+  // sin necesariamente darle todo Control.
+  { id: 'rdi', title: 'RDI', desc: 'Requerimientos de información al mandante y tiempos de respuesta' },
 ];
 
 const CACHE_KEY = 'control-permissions-cache-v1';

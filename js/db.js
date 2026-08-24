@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -110,6 +110,16 @@ function openDB() {
       if (!db.objectStoreNames.contains('costosReembolsos')) {
         const costosReembolsos = db.createObjectStore('costosReembolsos', { keyPath: 'id' });
         costosReembolsos.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      // Módulo RDI (v6): requerimientos de información al mandante — lo
+      // clave es saber cuánto se demora en responder (le da días a la
+      // constructora y sirve para presionar). Permiso propio, distinto de
+      // Costos: no es plata, así que puede tener sentido dárselo también a
+      // quien está en terreno.
+      if (!db.objectStoreNames.contains('rdiSolicitudes')) {
+        const rdiSolicitudes = db.createObjectStore('rdiSolicitudes', { keyPath: 'id' });
+        rdiSolicitudes.createIndex('by_obraId', 'obraId', { unique: false });
       }
     };
 
@@ -900,5 +910,63 @@ export async function updateCostosReembolso(id, changes, { updatedAt = Date.now(
 
 export async function deleteCostosReembolso(id) {
   const store = await tx('costosReembolsos', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- RDI: requerimientos de información al mandante ----------
+
+export async function addRdiSolicitud({ obraId, numero = '', fecha, emisor = '', cargo = '', especialidad = '', elementoArea = '', planoDocumento = '', descripcion = '', antecedentesAdjuntos = false, fechaEnvio, fechaRecepcion = null, respuesta = '', respuestaValida = null, accion = '', updatedAt }) {
+  const store = await tx('rdiSolicitudes', 'readwrite');
+  const now = Date.now();
+  const rdi = {
+    id: uuid(),
+    obraId,
+    numero,
+    fecha, // 'YYYY-MM-DD' — fecha en que se detecta/redacta el RDI
+    emisor,
+    cargo,
+    especialidad,
+    elementoArea,
+    planoDocumento,
+    descripcion,
+    antecedentesAdjuntos,
+    fechaEnvio, // 'YYYY-MM-DD' — cuándo se envió al mandante
+    fechaRecepcion, // 'YYYY-MM-DD' | null — cuándo llegó la respuesta (null = pendiente)
+    respuesta,
+    respuestaValida, // true | false | null (null = todavía no evaluada / no aplica)
+    accion,
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
+  };
+  await wrap(store.add(rdi));
+  return rdi;
+}
+
+/** Crea o reemplaza un RDI CON UN ID DADO — se usa al sincronizar desde
+ * Drive, mismo motivo que `upsertCostosModificacion`. */
+export async function upsertRdiSolicitud(rdi) {
+  const store = await tx('rdiSolicitudes', 'readwrite');
+  await wrap(store.put(rdi));
+  return rdi;
+}
+
+export async function getRdiSolicitudesByObra(obraId) {
+  const store = await tx('rdiSolicitudes', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => b.fechaEnvio.localeCompare(a.fechaEnvio));
+}
+
+export async function updateRdiSolicitud(id, changes, { updatedAt = Date.now() } = {}) {
+  const store = await tx('rdiSolicitudes', 'readwrite');
+  const rdi = await wrap(store.get(id));
+  if (!rdi) return null;
+  Object.assign(rdi, changes, { updatedAt });
+  await wrap(store.put(rdi));
+  return rdi;
+}
+
+export async function deleteRdiSolicitud(id) {
+  const store = await tx('rdiSolicitudes', 'readwrite');
   await wrap(store.delete(id));
 }

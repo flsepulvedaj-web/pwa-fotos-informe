@@ -10,7 +10,7 @@ import { DEFAULT_ROOT_FOLDER, findFileByName, updateFileContent, uploadFile, dow
 // resto desde /usuarios.
 export const ADMIN_EMAILS = ['flsepulvedaj@gmail.com', 'jzruiz5@gmail.com'];
 
-// Estos 3 son los módulos con acceso real (los que se pueden tildar en
+// Estos son los módulos con acceso real (los que se pueden tildar en
 // /usuarios) — "Banco" y "Proyectos" en el Home son solo agrupadores
 // visuales de estos mismos módulos + placeholders "Próximamente" sin
 // permiso propio todavía (ver bancoHomeView.js / proyectosHomeView.js).
@@ -18,6 +18,10 @@ export const APP_MODULES = [
   { id: 'fotos', title: 'Avance de obra', desc: 'Fotos de obra → informe PDF' },
   { id: 'protocolos', title: 'Protocolos', desc: 'Checklist de calidad + firma digital' },
   { id: 'control', title: 'Control', desc: 'Programación, SSMA, actas y KPI de obra' },
+  // Permiso propio y separado de Control a propósito: es información
+  // sensible (plata del contrato) — no todo el que ve Control (ej. el ITO
+  // en terreno) debería ver esto también.
+  { id: 'costos', title: 'Costos', desc: 'Presupuesto, modificaciones, facturación y reembolsos' },
 ];
 
 const CACHE_KEY = 'control-permissions-cache-v1';

@@ -13,9 +13,11 @@ export async function renderProyectosHomeView(container) {
 
   const protocolosOk = allowed.includes('protocolos');
   const controlOk = allowed.includes('control');
+  const costosOk = allowed.includes('costos');
   const sections = [
     { route: protocolosOk ? '/protocolos' : null, icon: '📋', title: 'Protocolos', desc: 'Checklist de calidad + firma digital', ready: protocolosOk },
     { route: controlOk ? '/control' : null, icon: '🎛️', title: 'Control', desc: 'Programación, SSMA, actas y KPI de obra', ready: controlOk },
+    { route: costosOk ? '/costos' : null, icon: '💰', title: 'Costos', desc: 'Presupuesto, modificaciones, facturación y reembolsos', ready: costosOk },
     { route: null, icon: '📍', title: 'Zona', desc: 'Próximamente', ready: false },
   ];
 

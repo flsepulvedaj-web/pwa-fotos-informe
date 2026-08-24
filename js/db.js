@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -85,6 +85,31 @@ function openDB() {
       if (!db.objectStoreNames.contains('controlActas')) {
         const controlActas = db.createObjectStore('controlActas', { keyPath: 'id' });
         controlActas.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      // Módulo Costos (v5): presupuesto, modificaciones, facturación y
+      // reembolsos — módulo aparte de Control porque es información
+      // sensible (plata del contrato), con permiso propio. También cuelga
+      // de la misma obra que el resto (by_obraId).
+      if (!db.objectStoreNames.contains('costosContrato')) {
+        // keyPath 'obraId' (no 'id'): es 1 registro por obra, no una lista
+        // — así basta un `put` para crear o actualizar (upsert natural).
+        db.createObjectStore('costosContrato', { keyPath: 'obraId' });
+      }
+
+      if (!db.objectStoreNames.contains('costosModificaciones')) {
+        const costosModificaciones = db.createObjectStore('costosModificaciones', { keyPath: 'id' });
+        costosModificaciones.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('costosFacturas')) {
+        const costosFacturas = db.createObjectStore('costosFacturas', { keyPath: 'id' });
+        costosFacturas.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('costosReembolsos')) {
+        const costosReembolsos = db.createObjectStore('costosReembolsos', { keyPath: 'id' });
+        costosReembolsos.createIndex('by_obraId', 'obraId', { unique: false });
       }
     };
 
@@ -673,5 +698,207 @@ export async function getChecklistPhotosByEntry(checklistId) {
 
 export async function deleteChecklistPhoto(id) {
   const store = await tx('controlChecklistPhotos', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Costos: contrato (config, 1 registro por obra) ----------
+
+export async function getCostosContrato(obraId) {
+  const store = await tx('costosContrato', 'readonly');
+  return wrap(store.get(obraId));
+}
+
+/** Crea o reemplaza el contrato de una obra (upsert natural: `keyPath` es
+ * `obraId`, así que un mismo `put` sirve para "crear" y "editar"). */
+export async function saveCostosContrato({ obraId, presupuestoOficial = 0, montoContrato = 0, moneda = '$', tcContrato = 1, anticipoPct = 0, retencionPeriodoPct = 0, retencionTotalContratoPct = 0, updatedAt }) {
+  const store = await tx('costosContrato', 'readwrite');
+  const contrato = {
+    obraId,
+    presupuestoOficial,
+    montoContrato,
+    moneda,
+    tcContrato,
+    anticipoPct,
+    retencionPeriodoPct,
+    retencionTotalContratoPct,
+    updatedAt: updatedAt ?? Date.now(),
+  };
+  await wrap(store.put(contrato));
+  return contrato;
+}
+
+// ---------- Costos: modificaciones de obra (MO) y proformas ----------
+
+/** Total de un desglose costoDirecto/gastosGenerales/utilidad — no se
+ * guarda aparte, se calcula siempre desde las 3 partes. */
+export function costosMontoTotal(m) {
+  if (!m) return 0;
+  return (m.costoDirecto || 0) + (m.gastosGenerales || 0) + (m.utilidad || 0);
+}
+
+export async function addCostosModificacion({ obraId, numero, descripcion, fechaPresentacion, tipo, subtipo, montoPresentado, estado = 'pendiente', montoAprobado, montoEstimado, observaciones = '', numeroOC = '', causadaPor = '', updatedAt }) {
+  const store = await tx('costosModificaciones', 'readwrite');
+  const now = Date.now();
+  const mo = {
+    id: uuid(),
+    obraId,
+    numero,
+    descripcion,
+    fechaPresentacion, // 'YYYY-MM-DD'
+    tipo, // 'modificacion' | 'proforma'
+    subtipo, // 'aumento' | 'disminucion' | 'obraExtraordinaria'
+    montoPresentado: { costoDirecto: 0, gastosGenerales: 0, utilidad: 0, ...montoPresentado },
+    estado, // 'pendiente' | 'aprobada' | 'rechazada'
+    montoAprobado: { costoDirecto: 0, gastosGenerales: 0, utilidad: 0, ...montoAprobado },
+    montoEstimado: { costoDirecto: 0, gastosGenerales: 0, utilidad: 0, ...montoEstimado },
+    observaciones,
+    numeroOC,
+    causadaPor,
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
+  };
+  await wrap(store.add(mo));
+  return mo;
+}
+
+/** Crea o reemplaza una modificación CON UN ID DADO (no genera uno nuevo) —
+ * se usa al sincronizar desde Drive: el `id` viaja completo dentro del JSON
+ * y debe conservarse tal cual, si no cada sincronización crearía un
+ * registro duplicado en vez de reconocer el que ya existe (mismo problema
+ * que resolvió `upsertObra` para la lista de obras). */
+export async function upsertCostosModificacion(mo) {
+  const store = await tx('costosModificaciones', 'readwrite');
+  await wrap(store.put(mo));
+  return mo;
+}
+
+export async function getCostosModificacionesByObra(obraId) {
+  const store = await tx('costosModificaciones', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function updateCostosModificacion(id, changes, { updatedAt = Date.now() } = {}) {
+  const store = await tx('costosModificaciones', 'readwrite');
+  const mo = await wrap(store.get(id));
+  if (!mo) return null;
+  Object.assign(mo, changes, { updatedAt });
+  await wrap(store.put(mo));
+  return mo;
+}
+
+export async function deleteCostosModificacion(id) {
+  const store = await tx('costosModificaciones', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Costos: facturación ----------
+
+export async function addCostosFactura({ obraId, tipo, item = '', descripcion = '', numeroFactura = '', fecha, tc = 1, avanceNetoPeriodo = 0, anticipoPeriodo = 0, retencionPeriodo = 0, reajustePeriodo = 0, updatedAt }) {
+  const store = await tx('costosFacturas', 'readwrite');
+  const now = Date.now();
+  const factura = {
+    id: uuid(),
+    obraId,
+    tipo, // 'contractual' | 'modificaciones'
+    item,
+    descripcion,
+    numeroFactura,
+    fecha, // 'YYYY-MM-DD'
+    tc,
+    avanceNetoPeriodo,
+    anticipoPeriodo,
+    retencionPeriodo,
+    reajustePeriodo,
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
+  };
+  await wrap(store.add(factura));
+  return factura;
+}
+
+/** Monto neto de una factura: avance del período menos lo retenido/
+ * anticipado, más el reajuste — no se guarda (se calcula siempre desde los
+ * montos del período, para no arrastrar un número desincronizado). */
+export function costosFacturaMontoNeto(f) {
+  if (!f) return 0;
+  return (f.avanceNetoPeriodo || 0) - (f.anticipoPeriodo || 0) - (f.retencionPeriodo || 0) + (f.reajustePeriodo || 0);
+}
+
+/** Ídem `upsertCostosModificacion`, para facturas sincronizadas desde Drive. */
+export async function upsertCostosFactura(factura) {
+  const store = await tx('costosFacturas', 'readwrite');
+  await wrap(store.put(factura));
+  return factura;
+}
+
+export async function getCostosFacturasByObra(obraId) {
+  const store = await tx('costosFacturas', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => b.fecha.localeCompare(a.fecha));
+}
+
+export async function updateCostosFactura(id, changes, { updatedAt = Date.now() } = {}) {
+  const store = await tx('costosFacturas', 'readwrite');
+  const factura = await wrap(store.get(id));
+  if (!factura) return null;
+  Object.assign(factura, changes, { updatedAt });
+  await wrap(store.put(factura));
+  return factura;
+}
+
+export async function deleteCostosFactura(id) {
+  const store = await tx('costosFacturas', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Costos: reembolsos solicitados por la constructora ----------
+
+export async function addCostosReembolso({ obraId, numero = '', descripcion = '', montoSinIva = 0, montoConIva = 0, fechaSolicitud, fechaPago = null, updatedAt }) {
+  const store = await tx('costosReembolsos', 'readwrite');
+  const now = Date.now();
+  const reembolso = {
+    id: uuid(),
+    obraId,
+    numero,
+    descripcion,
+    montoSinIva,
+    montoConIva,
+    fechaSolicitud, // 'YYYY-MM-DD'
+    fechaPago, // 'YYYY-MM-DD' | null (null = pendiente de pago)
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
+  };
+  await wrap(store.add(reembolso));
+  return reembolso;
+}
+
+/** Ídem `upsertCostosModificacion`, para reembolsos sincronizados desde Drive. */
+export async function upsertCostosReembolso(reembolso) {
+  const store = await tx('costosReembolsos', 'readwrite');
+  await wrap(store.put(reembolso));
+  return reembolso;
+}
+
+export async function getCostosReembolsosByObra(obraId) {
+  const store = await tx('costosReembolsos', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => b.fechaSolicitud.localeCompare(a.fechaSolicitud));
+}
+
+export async function updateCostosReembolso(id, changes, { updatedAt = Date.now() } = {}) {
+  const store = await tx('costosReembolsos', 'readwrite');
+  const reembolso = await wrap(store.get(id));
+  if (!reembolso) return null;
+  Object.assign(reembolso, changes, { updatedAt });
+  await wrap(store.put(reembolso));
+  return reembolso;
+}
+
+export async function deleteCostosReembolso(id) {
+  const store = await tx('costosReembolsos', 'readwrite');
   await wrap(store.delete(id));
 }

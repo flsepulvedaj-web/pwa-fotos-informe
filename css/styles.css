@@ -1826,7 +1826,8 @@ button {
 }
 
 .ssma-form input,
-.ssma-form textarea {
+.ssma-form textarea,
+.ssma-form select {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--color-border);
@@ -1840,6 +1841,26 @@ button {
 .ssma-form textarea {
   min-height: 60px;
   resize: vertical;
+}
+
+/* Grupo de 3 montos (costo directo / gastos generales / utilidad) del
+   módulo Costos — mismo look que el resto del formulario, agrupado con un
+   borde suave para separarlo visualmente. */
+.costos-monto-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.costos-monto-group legend {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
 }
 
 .ssma-form-actions {

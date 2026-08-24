@@ -14,6 +14,12 @@ import { renderControlObraView } from './views/controlObraView.js';
 import { renderControlSSMAView } from './views/controlSSMAView.js';
 import { renderControlChecklistView } from './views/controlChecklistView.js';
 import { renderControlAvanceView } from './views/controlAvanceView.js';
+import { renderCostosHomeView } from './views/costosHomeView.js';
+import { renderCostosObraView } from './views/costosObraView.js';
+import { renderCostosContratoView } from './views/costosContratoView.js';
+import { renderCostosModificacionesView } from './views/costosModificacionesView.js';
+import { renderCostosFacturacionView } from './views/costosFacturacionView.js';
+import { renderCostosReembolsosView } from './views/costosReembolsosView.js';
 import { renderPermissionsAdminView } from './views/permissionsAdminView.js';
 import { renderBancoHomeView } from './views/bancoHomeView.js';
 import { renderProyectosHomeView } from './views/proyectosHomeView.js';
@@ -47,6 +53,14 @@ registerRoute('/control/obra/:obraId', ({ obraId }) => renderControlObraView(app
 registerRoute('/control/obra/:obraId/personal', ({ obraId }) => renderControlSSMAView(appEl, obraId));
 registerRoute('/control/obra/:obraId/checklist', ({ obraId }) => renderControlChecklistView(appEl, obraId));
 registerRoute('/control/obra/:obraId/avance', ({ obraId }) => renderControlAvanceView(appEl, obraId));
+
+// Módulo Costos (presupuesto, modificaciones, facturación, reembolsos).
+registerRoute('/costos', () => renderCostosHomeView(appEl));
+registerRoute('/costos/obra/:obraId', ({ obraId }) => renderCostosObraView(appEl, obraId));
+registerRoute('/costos/obra/:obraId/contrato', ({ obraId }) => renderCostosContratoView(appEl, obraId));
+registerRoute('/costos/obra/:obraId/modificaciones', ({ obraId }) => renderCostosModificacionesView(appEl, obraId));
+registerRoute('/costos/obra/:obraId/facturacion', ({ obraId }) => renderCostosFacturacionView(appEl, obraId));
+registerRoute('/costos/obra/:obraId/reembolsos', ({ obraId }) => renderCostosReembolsosView(appEl, obraId));
 
 registerRoute('/usuarios', () => renderPermissionsAdminView(appEl));
 

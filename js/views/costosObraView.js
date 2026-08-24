@@ -37,10 +37,14 @@ export async function renderCostosObraView(container, obraId) {
     return;
   }
 
+  // Nota: la ruta/sección interna sigue llamándose "facturacion" (no vale
+  // la pena renombrar archivos/rutas por esto), pero Pancho no factura acá
+  // por reembolsos — la constructora cobra por Estados de Pago (EP), así
+  // que ese es el nombre que ve el usuario.
   const sections = [
     { id: 'contrato', icon: '📄', title: 'Contrato', desc: 'Presupuesto, moneda y retenciones' },
     { id: 'modificaciones', icon: '📈', title: 'Modificaciones', desc: 'Aumentos, disminuciones y proformas' },
-    { id: 'facturacion', icon: '🧾', title: 'Facturación', desc: 'Facturas contractuales y de modificaciones' },
+    { id: 'facturacion', icon: '🧾', title: 'Estados de pago', desc: 'EP contractuales y de modificaciones' },
     { id: 'reembolsos', icon: '💵', title: 'Reembolsos', desc: 'Solicitudes de pago a la constructora' },
   ];
 

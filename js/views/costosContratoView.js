@@ -14,7 +14,7 @@ import { toast, escapeHTML } from '../utils.js';
 export async function renderCostosContratoView(container, obraId) {
   const obra = await getObra(obraId);
   if (!obra) {
-    navigate('/costos');
+    navigate('/control');
     return;
   }
 

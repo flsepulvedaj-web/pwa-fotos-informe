@@ -26,16 +26,19 @@ function todayLocalISO() {
 }
 
 /**
- * Facturación: formulario para agregar/editar + historial — mismo patrón
- * que Personal en obra. El monto neto de cada factura se calcula siempre
- * desde los montos del período (avance − anticipo − retención + reajuste),
- * nunca se guarda aparte, así no puede quedar desincronizado. Los
- * acumulados (para el dashboard) se calculan sumando cronológicamente.
+ * Estados de pago (EP): formulario para agregar/editar + historial — mismo
+ * patrón que Personal en obra. Pancho no cobra por "facturas" sueltas, cobra
+ * por Estados de Pago (de ahí el nombre que ve el usuario — internamente la
+ * ruta/archivo se sigue llamando "facturacion", no vale la pena renombrarlo).
+ * El monto neto de cada EP se calcula siempre desde los montos del período
+ * (avance − anticipo − retención + reajuste), nunca se guarda aparte, así no
+ * puede quedar desincronizado. Los acumulados (para el dashboard) se
+ * calculan sumando cronológicamente.
  */
 export async function renderCostosFacturacionView(container, obraId) {
   const obra = await getObra(obraId);
   if (!obra) {
-    navigate('/costos');
+    navigate('/control');
     return;
   }
 
@@ -49,13 +52,13 @@ export async function renderCostosFacturacionView(container, obraId) {
       const changed = await syncFacturasFromDrive(obraId, obra.costosDriveFolderId);
       items = await getCostosFacturasByObra(obraId);
       if (changed) {
-        toast(`📥 ${changed} factura(s) traída(s) de Drive.`);
+        toast(`📥 ${changed} estado(s) de pago traído(s) de Drive.`);
         paint();
       } else if (!auto) {
         toast('Ya tenés todo lo más reciente.');
       }
     } catch (err) {
-      console.error('Error sincronizando facturas desde Drive:', err);
+      console.error('Error sincronizando estados de pago desde Drive:', err);
       if (!auto) toast('No se pudo conectar con Drive.');
     }
   }
@@ -66,11 +69,11 @@ export async function renderCostosFacturacionView(container, obraId) {
     container.innerHTML = `
       <header class="app-header">
         <button class="icon-btn" id="btn-back" title="Volver">←</button>
-        <span class="header-title">Facturación — ${escapeHTML(obra.name)}</span>
+        <span class="header-title">Estados de pago — ${escapeHTML(obra.name)}</span>
       </header>
       <main class="view-content">
         <form class="ssma-form" id="fact-form">
-          <h2>${editingId ? 'Editar factura' : 'Nueva factura'}</h2>
+          <h2>${editingId ? 'Editar estado de pago' : 'Nuevo estado de pago'}</h2>
 
           <label for="f-tipo">Tipo</label>
           <select id="f-tipo">
@@ -127,7 +130,7 @@ export async function renderCostosFacturacionView(container, obraId) {
           </section>
         ` : `
           <div class="empty-state">
-            <p>Todavía no hay facturas cargadas.</p>
+            <p>Todavía no hay estados de pago cargados.</p>
           </div>
         `}
       </main>
@@ -162,11 +165,11 @@ export async function renderCostosFacturacionView(container, obraId) {
       let saved;
       if (editingId) {
         saved = await updateCostosFactura(editingId, fields);
-        toast('Factura actualizada.');
+        toast('Estado de pago actualizado.');
         editingId = null;
       } else {
         saved = await addCostosFactura({ obraId, ...fields });
-        toast('Factura guardada.');
+        toast('Estado de pago guardado.');
       }
 
       if (obra.costosDriveFolderId) {
@@ -189,12 +192,12 @@ export async function renderCostosFacturacionView(container, obraId) {
     container.querySelectorAll('.ssma-delete-btn').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const ok = await confirmDialog('¿Eliminar esta factura? No se puede deshacer. Ojo: si estaba compartida con el equipo, la copia en Drive no se borra sola.');
+        const ok = await confirmDialog('¿Eliminar este estado de pago? No se puede deshacer. Ojo: si estaba compartido con el equipo, la copia en Drive no se borra sola.');
         if (!ok) return;
         await deleteCostosFactura(btn.dataset.deleteId);
         if (editingId === btn.dataset.deleteId) editingId = null;
         items = await getCostosFacturasByObra(obraId);
-        toast('Factura eliminada.');
+        toast('Estado de pago eliminado.');
         paint();
       });
     });

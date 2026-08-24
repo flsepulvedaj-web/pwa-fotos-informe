@@ -59,7 +59,7 @@ function readMontoGroup(container, prefix) {
 export async function renderCostosModificacionesView(container, obraId) {
   const obra = await getObra(obraId);
   if (!obra) {
-    navigate('/costos');
+    navigate('/control');
     return;
   }
 

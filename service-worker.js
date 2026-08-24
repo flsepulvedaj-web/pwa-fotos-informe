@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v83';
+const CACHE_VERSION = 'v84';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -24,6 +24,7 @@ const APP_SHELL = [
   './js/costosSync.js',
   './js/rdiDashboard.js',
   './js/rdiSync.js',
+  './js/directorioSync.js',
   './js/permissions.js',
   './js/obraSync.js',
   './js/googleDrive.js',
@@ -44,6 +45,8 @@ const APP_SHELL = [
   './js/views/controlAvanceView.js',
   './js/views/costosObraView.js',
   './js/views/rdiObraView.js',
+  './js/views/subcontratosView.js',
+  './js/views/organismosView.js',
   './js/views/costosContratoView.js',
   './js/views/costosModificacionesView.js',
   './js/views/costosFacturacionView.js',

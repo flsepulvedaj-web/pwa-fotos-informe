@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -120,6 +120,21 @@ function openDB() {
       if (!db.objectStoreNames.contains('rdiSolicitudes')) {
         const rdiSolicitudes = db.createObjectStore('rdiSolicitudes', { keyPath: 'id' });
         rdiSolicitudes.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      // Módulos "chicos" (v7): Subcontratos y Organismos Públicos — listas
+      // simples de directorio/seguimiento, sin dashboard propio. A
+      // diferencia de Costos/RDI, no tienen permiso aparte: cualquiera con
+      // acceso a Control las ve (no es información sensible, es una
+      // agenda/checklist de trámites).
+      if (!db.objectStoreNames.contains('subcontratos')) {
+        const subcontratos = db.createObjectStore('subcontratos', { keyPath: 'id' });
+        subcontratos.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains('organismosPublicos')) {
+        const organismosPublicos = db.createObjectStore('organismosPublicos', { keyPath: 'id' });
+        organismosPublicos.createIndex('by_obraId', 'obraId', { unique: false });
       }
     };
 
@@ -968,5 +983,108 @@ export async function updateRdiSolicitud(id, changes, { updatedAt = Date.now() }
 
 export async function deleteRdiSolicitud(id) {
   const store = await tx('rdiSolicitudes', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Subcontratos (directorio) ----------
+
+export async function addSubcontrato({ obraId, numero = '', razonSocial = '', servicio = '', rut = '', contacto = '', fono = '', email = '', activo = true, updatedAt }) {
+  const store = await tx('subcontratos', 'readwrite');
+  const now = Date.now();
+  const sub = {
+    id: uuid(),
+    obraId,
+    numero,
+    razonSocial,
+    servicio,
+    rut,
+    contacto,
+    fono,
+    email,
+    activo,
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
+  };
+  await wrap(store.add(sub));
+  return sub;
+}
+
+/** Ídem `upsertCostosModificacion` — conserva el `id` al sincronizar desde Drive. */
+export async function upsertSubcontrato(sub) {
+  const store = await tx('subcontratos', 'readwrite');
+  await wrap(store.put(sub));
+  return sub;
+}
+
+export async function getSubcontratosByObra(obraId) {
+  const store = await tx('subcontratos', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => (a.razonSocial || '').localeCompare(b.razonSocial || '', 'es', { numeric: true }));
+}
+
+export async function updateSubcontrato(id, changes, { updatedAt = Date.now() } = {}) {
+  const store = await tx('subcontratos', 'readwrite');
+  const sub = await wrap(store.get(id));
+  if (!sub) return null;
+  Object.assign(sub, changes, { updatedAt });
+  await wrap(store.put(sub));
+  return sub;
+}
+
+export async function deleteSubcontrato(id) {
+  const store = await tx('subcontratos', 'readwrite');
+  await wrap(store.delete(id));
+}
+
+// ---------- Organismos públicos (estado de trámites) ----------
+
+export async function addOrganismoTramite({ obraId, item = '', gestion = '', organismo = '', aprobado = false, pagoDerechos = false, designacionITO = false, observaciones = '', fechaEstimada = null, fechaEntregada = null, updatedAt }) {
+  const store = await tx('organismosPublicos', 'readwrite');
+  const now = Date.now();
+  const tramite = {
+    id: uuid(),
+    obraId,
+    item,
+    gestion,
+    organismo,
+    aprobado,
+    pagoDerechos,
+    designacionITO,
+    observaciones,
+    fechaEstimada, // 'YYYY-MM-DD' | null
+    fechaEntregada, // 'YYYY-MM-DD' | null
+    createdAt: now,
+    updatedAt: updatedAt ?? now,
+  };
+  await wrap(store.add(tramite));
+  return tramite;
+}
+
+/** Ídem `upsertCostosModificacion` — conserva el `id` al sincronizar desde Drive. */
+export async function upsertOrganismoTramite(tramite) {
+  const store = await tx('organismosPublicos', 'readwrite');
+  await wrap(store.put(tramite));
+  return tramite;
+}
+
+export async function getOrganismosTramitesByObra(obraId) {
+  const store = await tx('organismosPublicos', 'readonly');
+  const index = store.index('by_obraId');
+  const results = await wrap(index.getAll(obraId));
+  return results.sort((a, b) => (a.item || '').localeCompare(b.item || '', 'es', { numeric: true }));
+}
+
+export async function updateOrganismoTramite(id, changes, { updatedAt = Date.now() } = {}) {
+  const store = await tx('organismosPublicos', 'readwrite');
+  const tramite = await wrap(store.get(id));
+  if (!tramite) return null;
+  Object.assign(tramite, changes, { updatedAt });
+  await wrap(store.put(tramite));
+  return tramite;
+}
+
+export async function deleteOrganismoTramite(id) {
+  const store = await tx('organismosPublicos', 'readwrite');
   await wrap(store.delete(id));
 }

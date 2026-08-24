@@ -55,6 +55,11 @@ export async function renderControlObraView(container, obraId) {
     { id: 'avance', icon: '📅', title: 'Avance programado', desc: 'Importar programación desde Project', ready: true },
     ...(allowedModules.includes('costos') ? [{ id: 'costos', icon: '💰', title: 'Costos', desc: 'Presupuesto, modificaciones, facturación y reembolsos', ready: true }] : []),
     ...(allowedModules.includes('rdi') ? [{ id: 'rdi', icon: '📨', title: 'RDI', desc: 'Requerimientos de información al mandante', ready: true }] : []),
+    // Subcontratos y Organismos Públicos NO tienen permiso propio (a
+    // diferencia de Costos/RDI) — son listas de directorio/seguimiento, no
+    // información sensible, así que cualquiera con acceso a Control las ve.
+    { id: 'subcontratos', icon: '📇', title: 'Subcontratos', desc: 'Directorio de subcontratos activos', ready: true },
+    { id: 'organismos', icon: '🏛️', title: 'Organismos Públicos', desc: 'Estado de trámites (SEC, etc.)', ready: true },
     { id: 'actas', icon: '📝', title: 'Actas de reunión', desc: 'Asistentes, temas, acuerdos', ready: false },
   ];
 
@@ -169,6 +174,10 @@ export async function renderControlObraView(container, obraId) {
           navigate(`/costos/obra/${obraId}`);
         } else if (section === 'rdi') {
           navigate(`/rdi/obra/${obraId}`);
+        } else if (section === 'subcontratos') {
+          navigate(`/subcontratos/obra/${obraId}`);
+        } else if (section === 'organismos') {
+          navigate(`/organismos/obra/${obraId}`);
         }
         // Las demás secciones todavía no tienen vista — no hacen nada al
         // tocarlas (quedan visibles para mostrar el mapa completo del módulo).

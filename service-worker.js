@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v88';
+const CACHE_VERSION = 'v89';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -59,6 +59,7 @@ const APP_SHELL = [
   './js/views/bancoHomeView.js',
   './js/views/proyectosHomeView.js',
   './vendor/jspdf.umd.min.js',
+  './vendor/xlsx.full.min.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',

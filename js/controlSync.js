@@ -9,7 +9,7 @@
 // el que tenga el "updatedAt" más nuevo adentro, no el que se subió último
 // a Drive — evita pisar un cambio más nuevo con uno viejo que tardó en
 // subir por mala señal.
-import { listDriveJSONFiles, listDriveCsvFiles, downloadDriveFile, uploadJSON } from './googleDrive.js';
+import { listDriveJSONFiles, listDriveScheduleFiles, downloadDriveFile, uploadJSON } from './googleDrive.js';
 import { DEFAULT_CHECKLIST_TYPES } from './controlChecklistTemplates.js';
 import {
   getSSMAEntryByObraAndDate,
@@ -24,7 +24,7 @@ import {
   addScheduleSnapshot,
   getScheduleSnapshotsByObra,
 } from './db.js';
-import { parseScheduleCSV } from './controlScheduleParser.js';
+import { parseScheduleCSV, parseScheduleXLSX } from './controlScheduleParser.js';
 
 // Project exporta el CSV en "Windows (ANSI)" por defecto, no UTF-8 — se
 // intenta UTF-8 primero y si aparece el caracter de reemplazo (texto
@@ -35,20 +35,22 @@ function decodeCsvSmart(buf) {
   return utf8;
 }
 
-/** Trae de Drive las programaciones (.csv) que todavía no se hayan
- * importado — una por revisión, usa la fecha real de modificación del
+/** Trae de Drive las programaciones (.csv o .xlsx/.xls) que todavía no se
+ * hayan importado — una por revisión, usa la fecha real de modificación del
  * archivo. Devuelve cuántas se importaron. */
 export async function syncAvanceFromDrive(obraId, folderId) {
   if (!folderId) return 0;
   const snapshots = await getScheduleSnapshotsByObra(obraId);
-  const files = await listDriveCsvFiles(folderId);
+  const files = await listDriveScheduleFiles(folderId);
   const pending = files.filter((f) => !snapshots.some((s) => s.driveFileId === f.id));
   let count = 0;
   for (const file of pending) {
     try {
       const blob = await downloadDriveFile(file.id);
-      const text = decodeCsvSmart(await blob.arrayBuffer());
-      const { tasks, overallPercent } = parseScheduleCSV(text);
+      const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+      const { tasks, overallPercent } = isExcel
+        ? parseScheduleXLSX(await blob.arrayBuffer())
+        : parseScheduleCSV(decodeCsvSmart(await blob.arrayBuffer()));
       await addScheduleSnapshot({
         obraId,
         tasks,

@@ -1,5 +1,5 @@
 import { getObra, updateObra, addScheduleSnapshot, getScheduleSnapshotsByObra, deleteScheduleSnapshot } from '../db.js';
-import { parseScheduleCSV, buildTaskTree } from '../controlScheduleParser.js';
+import { parseScheduleCSV, parseScheduleXLSX, buildTaskTree } from '../controlScheduleParser.js';
 import { openFolderPicker, isSignedIn } from '../googleDrive.js';
 import { syncAvanceFromDrive } from '../controlSync.js';
 import { navigate } from '../router.js';
@@ -139,8 +139,7 @@ export async function renderControlAvanceView(container, obraId) {
     treeBuiltForId = selectedSnapshotId;
   }
 
-  async function importCSVText(text, { driveFileId = null, driveFileName = null, uploadedAt } = {}) {
-    const { tasks, overallPercent } = parseScheduleCSV(text);
+  async function importParsed({ tasks, overallPercent }, { driveFileId = null, driveFileName = null, uploadedAt } = {}) {
     const snapshot = await addScheduleSnapshot({ obraId, tasks, overallPercent, driveFileId, driveFileName, ...(uploadedAt ? { uploadedAt } : {}) });
     snapshots = await getScheduleSnapshotsByObra(obraId);
     selectedSnapshotId = snapshot.id;
@@ -195,13 +194,13 @@ export async function renderControlAvanceView(container, obraId) {
             </div>
           ` : `
             <button type="button" class="btn btn-primary" id="btn-link-drive-folder">🔗 Vincular carpeta de Drive</button>
-            <p class="avance-upload-hint">Elegí la carpeta donde vas dejando el CSV de la programación (la que ya armaste en Drive) — de ahí en adelante la app la revisa sola.</p>
+            <p class="avance-upload-hint">Elegí la carpeta donde vas dejando la programación (CSV o Excel, la que ya armaste en Drive) — de ahí en adelante la app la revisa sola.</p>
           `}
         </section>
 
         <section class="avance-upload">
-          <button type="button" class="btn btn-secondary" id="btn-upload-csv">📤 O subir un CSV a mano</button>
-          <input type="file" id="avance-csv-input" accept=".csv,text/csv" hidden />
+          <button type="button" class="btn btn-secondary" id="btn-upload-csv">📤 O subir la programación a mano (CSV o Excel)</button>
+          <input type="file" id="avance-csv-input" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
         </section>
 
         ${selected ? `
@@ -270,13 +269,16 @@ export async function renderControlAvanceView(container, obraId) {
       csvInput.value = '';
       if (!file) return;
       try {
-        const text = await readTextSmart(file);
-        const { tasks, overallPercent } = await importCSVText(text);
+        const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+        const parsed = isExcel
+          ? parseScheduleXLSX(await file.arrayBuffer())
+          : parseScheduleCSV(await readTextSmart(file));
+        const { tasks, overallPercent } = await importParsed(parsed);
         toast(`Programación cargada: ${tasks.length} tareas, ${overallPercent}% de avance.`);
         paint();
       } catch (err) {
-        console.error('Error leyendo CSV de programación:', err);
-        toast(err.message || 'No se pudo leer el archivo. Revisa que sea el CSV exportado de Project.');
+        console.error('Error leyendo el archivo de programación:', err);
+        toast(err.message || 'No se pudo leer el archivo. Revisa que sea el CSV o Excel exportado de Project.');
       }
     });
 

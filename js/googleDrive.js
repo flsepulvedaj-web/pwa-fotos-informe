@@ -299,7 +299,10 @@ export async function listDriveFiles(parentId) {
  * mimeType distinto según cómo se subió (text/csv, application/vnd.ms-excel,
  * text/plain…), así que el nombre es más confiable.
  */
-export async function listDriveCsvFiles(parentId) {
+/** Archivos de programación en una carpeta: CSV o Excel (.xlsx/.xls) — se
+ * acepta cualquiera de los 3, `controlSync.js` decide cómo parsear cada uno
+ * según su extensión. */
+export async function listDriveScheduleFiles(parentId) {
   const token = await signIn();
   const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
   const res = await fetch(
@@ -311,7 +314,7 @@ export async function listDriveCsvFiles(parentId) {
     throw new Error(`Error listando archivos de Drive (${res.status}): ${text}`);
   }
   const data = await res.json();
-  return (data.files || []).filter((f) => f.name.toLowerCase().endsWith('.csv'));
+  return (data.files || []).filter((f) => /\.(csv|xlsx|xls)$/i.test(f.name));
 }
 
 /**

@@ -1,9 +1,8 @@
-// Parser de CSV de programación exportada desde Microsoft Project. Sin
-// librería (el proyecto no tiene ninguna vendored para esto) — Project
-// exporta texto delimitado simple, fácil de leer a mano. Se hizo lo más
+// Parser de programación exportada desde Microsoft Project — CSV (a mano,
+// sin librería, el formato es texto delimitado simple) o Excel (.xlsx/.xls,
+// vía SheetJS vendorizado, ver parseScheduleXLSX más abajo). Se hizo lo más
 // tolerante posible (delimitador, nombres de columna, formatos de fecha)
-// porque todavía no se probó con un export real — se ajusta apenas Pancho
-// mande uno de verdad.
+// porque se ajustó recién con exports reales de Pancho.
 
 const NAME_ALIASES = ['nombre de tarea', 'nombre de la tarea', 'tarea', 'task name', 'task', 'nombre'];
 const START_ALIASES = ['comienzo', 'inicio', 'fecha de inicio', 'start', 'start date'];
@@ -95,6 +94,68 @@ function toISO(date) {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Convierte una hoja a texto CSV a mano, en vez de usar
+ * `XLSX.utils.sheet_to_csv` — esa función solo aplica el formato de fecha
+ * que se le pida (`dateNF`) cuando la celda NO trae ya un formato propio, y
+ * las celdas de fecha de un Excel real casi siempre traen uno (el que haya
+ * quedado configurado en Project/Excel, típicamente "m/d/yy" en inglés).
+ * Sin este arreglo, una fecha como el 1 de agosto salía "8/1/26" y se
+ * terminaba leyendo como 8 de enero. Acá se ignora ese formato: si la celda
+ * quedó tipada como fecha (`cellDates: true` al leer), se arma el texto
+ * directo con los componentes del Date — sin ambigüedad de dd/mm vs mm/dd
+ * posible. OJO: se usan los componentes UTC (`getUTCFullYear`, no
+ * `getFullYear`) — SheetJS arma estas fechas como medianoche UTC del día
+ * de la planilla (el serial de Excel no tiene huso horario propio); leerlas
+ * en local en Chile (UTC-3/-4) las corría un día para atrás, mismo tipo de
+ * desfase que ya se arregló en otras partes de Avance con `parseLocalDate`.
+ */
+function sheetToCsvText(sheet) {
+  const ref = sheet['!ref'];
+  if (!ref) return '';
+  const range = XLSX.utils.decode_range(ref);
+  const lines = [];
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const cells = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      let text = '';
+      if (cell) {
+        if (cell.t === 'd' && cell.v instanceof Date) {
+          const d = cell.v;
+          text = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+        } else if (cell.v !== undefined && cell.v !== null) {
+          text = String(cell.v);
+        }
+      }
+      if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+        text = `"${text.replace(/"/g, '""')}"`;
+      }
+      cells.push(text);
+    }
+    lines.push(cells.join(','));
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Parsea un Excel (.xlsx/.xls) exportado de Project directo, sin que Pancho
+ * tenga que exportarlo como CSV primero — usa SheetJS (vendor/xlsx.full.min.js,
+ * cargado como <script> global, mismo patrón que jsPDF) solo para leer la
+ * primera hoja; de ahí en adelante reusa `parseScheduleCSV` tal cual (vía
+ * `sheetToCsvText` arriba), así el reconocimiento de columnas es exactamente
+ * el mismo sin importar el formato del archivo.
+ */
+export function parseScheduleXLSX(arrayBuffer) {
+  const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) {
+    throw new Error('El Excel no tiene ninguna hoja.');
+  }
+  const csvText = sheetToCsvText(workbook.Sheets[sheetName]);
+  return parseScheduleCSV(csvText);
 }
 
 /**

@@ -14,7 +14,7 @@ import {
   getScheduleSnapshotsByObra,
   deleteScheduleSnapshot,
 } from './db.js';
-import { listDriveJSONFiles, listDriveCsvFiles, trashDriveFile } from './googleDrive.js';
+import { listDriveJSONFiles, listDriveScheduleFiles, trashDriveFile } from './googleDrive.js';
 
 /** Manda a la papelera de Drive todos los archivos de una carpeta, uno por
  * uno (best-effort: si uno falla, sigue con el resto). Devuelve cuántos se
@@ -57,7 +57,7 @@ export async function resetPendientes(obraId, obra) {
 
   const [checklistDrive, avanceDrive] = await Promise.all([
     trashAllInFolder(obra.checklistDriveFolderId, listDriveJSONFiles),
-    trashAllInFolder(obra.programacionDriveFolderId, listDriveCsvFiles),
+    trashAllInFolder(obra.programacionDriveFolderId, listDriveScheduleFiles),
   ]);
 
   return {

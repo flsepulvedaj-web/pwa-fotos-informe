@@ -42,7 +42,7 @@ export async function renderCostosObraView(container, obraId) {
   // por reembolsos — la constructora cobra por Estados de Pago (EP), así
   // que ese es el nombre que ve el usuario.
   const sections = [
-    { id: 'contrato', icon: '📄', title: 'Contrato', desc: 'Presupuesto, moneda y retenciones' },
+    { id: 'contrato', icon: '📄', title: 'Presupuesto', desc: 'Presupuesto oficial, moneda y retenciones' },
     { id: 'modificaciones', icon: '📈', title: 'Modificaciones', desc: 'Aumentos, disminuciones y proformas' },
     { id: 'facturacion', icon: '🧾', title: 'Estados de pago', desc: 'EP contractuales y de modificaciones' },
     { id: 'reembolsos', icon: '💵', title: 'Reembolsos', desc: 'Solicitudes de pago a la constructora' },

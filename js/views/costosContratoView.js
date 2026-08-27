@@ -5,11 +5,13 @@ import { navigate } from '../router.js';
 import { toast, escapeHTML } from '../utils.js';
 
 /**
- * Configuración del contrato de una obra: presupuesto oficial, monto de
- * contrato, moneda/TC, y los porcentajes de anticipo y retención — son la
- * base sobre la que se calculan el resto de los KPI de Costos (presupuesto
- * vigente, % avance financiero). A diferencia de Modificaciones/
- * Facturación/Reembolsos, es un solo registro por obra, no un historial.
+ * Presupuesto de una obra: presupuesto oficial, monto de contrato, moneda/
+ * TC, y los porcentajes de anticipo y retención — son la base sobre la que
+ * se calculan el resto de los KPI de Costos (presupuesto vigente, % avance
+ * financiero). A diferencia de Modificaciones/Estados de pago/Reembolsos,
+ * es un solo registro por obra, no un historial (por eso se llama
+ * "Presupuesto" para el usuario, aunque la ruta/archivo interno se sigan
+ * llamando "contrato" — no vale la pena renombrarlos por esto).
  */
 export async function renderCostosContratoView(container, obraId) {
   const obra = await getObra(obraId);
@@ -27,13 +29,13 @@ export async function renderCostosContratoView(container, obraId) {
       const changed = await syncContratoFromDrive(obraId, obra.costosDriveFolderId);
       if (changed) {
         contrato = await getCostosContrato(obraId);
-        toast('📥 Contrato actualizado desde Drive.');
+        toast('📥 Presupuesto actualizado desde Drive.');
         paint();
       } else if (!auto) {
         toast('Ya tenés lo más reciente.');
       }
     } catch (err) {
-      console.error('Error sincronizando contrato desde Drive:', err);
+      console.error('Error sincronizando presupuesto desde Drive:', err);
       if (!auto) toast('No se pudo conectar con Drive.');
     }
   }
@@ -42,7 +44,7 @@ export async function renderCostosContratoView(container, obraId) {
     container.innerHTML = `
       <header class="app-header">
         <button class="icon-btn" id="btn-back" title="Volver">←</button>
-        <span class="header-title">Contrato — ${escapeHTML(obra.name)}</span>
+        <span class="header-title">Presupuesto — ${escapeHTML(obra.name)}</span>
       </header>
       <main class="view-content">
         <section class="avance-drive-link">
@@ -54,12 +56,12 @@ export async function renderCostosContratoView(container, obraId) {
             </div>
           ` : `
             <button type="button" class="btn btn-primary" id="btn-link-drive-folder">🔗 Compartir con el equipo (Drive)</button>
-            <p class="avance-upload-hint">Vinculá una carpeta de Drive — esta misma se va a usar para Modificaciones, Facturación y Reembolsos de esta obra.</p>
+            <p class="avance-upload-hint">Vinculá una carpeta de Drive — esta misma se va a usar para Modificaciones, Estados de pago y Reembolsos de esta obra.</p>
           `}
         </section>
 
         <form class="ssma-form" id="contrato-form">
-          <h2>Datos del contrato</h2>
+          <h2>Datos del presupuesto</h2>
 
           <label for="c-presupuesto">Presupuesto oficial</label>
           <input type="number" id="c-presupuesto" min="0" step="1" inputmode="decimal" />
@@ -131,7 +133,7 @@ export async function renderCostosContratoView(container, obraId) {
         retencionPeriodoPct: num('#c-retencion-periodo'),
         retencionTotalContratoPct: num('#c-retencion-total'),
       });
-      toast('Contrato guardado.');
+      toast('Presupuesto guardado.');
 
       if (obra.costosDriveFolderId) {
         const ok = await uploadContrato(obra.costosDriveFolderId, contrato);

@@ -77,6 +77,12 @@ export async function renderControlHomeView(container) {
         toast(`📥 ${changed} obra(s) traída(s) del equipo.`);
         paint();
       }
+      // Sube igual, aunque no haya cambiado nada al bajar — así una obra
+      // creada antes de que existiera esta sincronización (o en un
+      // dispositivo que nunca volvió a tocar "Nueva obra" después) igual
+      // termina en el índice compartido, sin que nadie tenga que hacer
+      // nada manual. Cada apertura de Control autorepara el índice.
+      uploadObrasIndex();
     }).catch((err) => console.error('Error sincronizando obras desde Drive:', err));
   }
 }

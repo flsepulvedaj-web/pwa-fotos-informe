@@ -2406,6 +2406,13 @@ button {
   color: var(--color-danger);
 }
 
+.incumplimientos-reset-btn {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
 .incumplimiento-row {
   display: flex;
   align-items: center;

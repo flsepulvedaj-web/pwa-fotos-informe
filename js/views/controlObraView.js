@@ -15,9 +15,10 @@ import {
 } from '../controlDashboard.js';
 import { isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { syncChecklistFromDrive, syncSSMAFromDrive, syncAvanceFromDrive } from '../controlSync.js';
-import { modulesForEmail, getCachedPermissions } from '../permissions.js';
+import { modulesForEmail, getCachedPermissions, isAdmin } from '../permissions.js';
+import { resetPendientes } from '../controlReset.js';
 import { navigate } from '../router.js';
-import { escapeHTML, toast } from '../utils.js';
+import { escapeHTML, confirmDialog, toast } from '../utils.js';
 
 function formatDateEs(iso) {
   if (!iso) return '—';
@@ -122,6 +123,9 @@ export async function renderControlObraView(container, obraId) {
         ${checklist.incumplimientos.length || atrasadas.length ? `
           <section class="incumplimientos-panel">
             <h3>⚠️ Pendientes (${checklist.incumplimientos.length + atrasadas.length})</h3>
+            ${isAdmin(email) ? `
+              <button type="button" class="btn btn-secondary incumplimientos-reset-btn" id="btn-reset-pendientes">🧹 Reiniciar pendientes de esta obra</button>
+            ` : ''}
             ${atrasadas.map((t) => `
               <div class="incumplimiento-row">
                 <div class="incumplimiento-main">
@@ -184,6 +188,35 @@ export async function renderControlObraView(container, obraId) {
         // Las demás secciones todavía no tienen vista — no hacen nada al
         // tocarlas (quedan visibles para mostrar el mapa completo del módulo).
       });
+    });
+
+    container.querySelector('#btn-reset-pendientes')?.addEventListener('click', async () => {
+      if (!isSignedIn()) {
+        toast('Necesitás sesión de Google iniciada para reiniciar (borra también en Drive).');
+        return;
+      }
+      const ok = await confirmDialog(
+        `¿Reiniciar los pendientes de "${obra.name}"? Se borra TODO el historial de Checklist diario (con sus fotos) y de Avance programado, tanto de este teléfono como de Drive (queda recuperable desde la papelera de Drive por un tiempo). Personal en obra y Protocolos NO se tocan. Esta acción es para partir de cero — no se puede deshacer desde la app.`
+      );
+      if (!ok) return;
+
+      const btn = container.querySelector('#btn-reset-pendientes');
+      btn.disabled = true;
+      btn.textContent = 'Reiniciando…';
+      try {
+        const result = await resetPendientes(obraId, obra);
+        data = await loadData();
+        toast(
+          `Listo: se borraron ${result.checklistBorrados} checklist y ${result.snapshotsBorrados} programación(es)` +
+          (result.driveFailed ? ` (${result.driveFailed} archivo(s) de Drive no se pudieron borrar, revisalo a mano).` : '.')
+        );
+        paint();
+      } catch (err) {
+        console.error('Error reiniciando pendientes:', err);
+        toast('No se pudo reiniciar. Intenta de nuevo.');
+        btn.disabled = false;
+        btn.textContent = '🧹 Reiniciar pendientes de esta obra';
+      }
     });
 
     container.querySelectorAll('.incumplimiento-resolve-btn').forEach((btn) => {

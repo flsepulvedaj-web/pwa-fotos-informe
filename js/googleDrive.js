@@ -399,6 +399,25 @@ export async function findFileByName(parentId, name) {
   return (data.files || [])[0] || null;
 }
 
+/** Manda un archivo de Drive a la papelera (NO lo borra para siempre —
+ * `files.delete` de la API sí sería permanente; con `trashed: true` queda
+ * recuperable desde la papelera de Drive por si algo salió mal). Se usa
+ * desde "Reiniciar pendientes" en Control, para que lo que se borra en el
+ * teléfono no vuelva a aparecer solo la próxima vez que alguien del equipo
+ * sincronice. */
+export async function trashDriveFile(fileId) {
+  const token = await signIn();
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error moviendo archivo a la papelera de Drive (${res.status}): ${text}`);
+  }
+}
+
 /** Reemplaza el contenido de un archivo de Drive que ya existe. */
 export async function updateFileContent(fileId, blob) {
   const token = await signIn();

@@ -9,8 +9,11 @@ import {
   ssmaEntryTotal,
   ssmaEntryBreakdown,
 } from '../db.js';
-import { openFolderPicker, isSignedIn } from '../googleDrive.js';
+import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { uploadSSMAEntry, syncSSMAFromDrive } from '../controlSync.js';
+import { uploadObrasIndex } from '../obraSync.js';
+import { isAdmin } from '../permissions.js';
+import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
 import { navigate } from '../router.js';
 import { escapeHTML, confirmDialog, toast } from '../utils.js';
 
@@ -42,6 +45,7 @@ export async function renderControlSSMAView(container, obraId) {
     return;
   }
 
+  const admin = isAdmin(await getSignedInEmail());
   let entries = await getSSMAEntriesByObra(obraId);
   let editingId = null;
 
@@ -72,18 +76,13 @@ export async function renderControlSSMAView(container, obraId) {
         <span class="header-title">Personal en obra — ${escapeHTML(obra.name)}</span>
       </header>
       <main class="view-content">
-        <section class="avance-drive-link">
-          ${obra.personalDriveFolderId ? `
-            <div class="avance-drive-linked">☁️ Compartido con el equipo en: <strong>${escapeHTML(obra.personalDriveFolderName)}</strong></div>
-            <div class="avance-drive-actions">
-              <button type="button" class="btn btn-secondary" id="btn-check-drive">🔄 Buscar registros nuevos</button>
-              <button type="button" class="btn btn-secondary" id="btn-change-drive-folder">Cambiar carpeta</button>
-            </div>
-          ` : `
-            <button type="button" class="btn btn-primary" id="btn-link-drive-folder">🔗 Compartir con el equipo (Drive)</button>
-            <p class="avance-upload-hint">Vinculá una carpeta de Drive para que lo que cargue cualquiera del equipo (ej. tu ITO en terreno) te llegue a vos también.</p>
-          `}
-        </section>
+        ${driveLinkSectionHTML({
+          admin,
+          folderId: obra.personalDriveFolderId,
+          folderName: obra.personalDriveFolderName,
+          syncLabel: '🔄 Buscar registros nuevos',
+          hintText: 'Vinculá una carpeta de Drive para que lo que cargue cualquiera del equipo (ej. tu ITO en terreno) te llegue a vos también.',
+        })}
 
         <form class="ssma-form" id="ssma-form">
           <h2>${editingId ? 'Editar registro' : 'Registrar personal de hoy'}</h2>
@@ -136,24 +135,25 @@ export async function renderControlSSMAView(container, obraId) {
 
     container.querySelector('#btn-back').addEventListener('click', () => navigate(`/control/obra/${obraId}`));
 
-    const linkFolder = async () => {
-      try {
-        const picked = await openFolderPicker();
-        if (!picked) return;
-        await updateObra(obraId, { personalDriveFolderId: picked.id, personalDriveFolderName: picked.name });
-        obra.personalDriveFolderId = picked.id;
-        obra.personalDriveFolderName = picked.name;
-        toast(`Carpeta vinculada: "${picked.name}".`);
-        paint();
-        syncFromDrive({ auto: false });
-      } catch (err) {
-        console.error(err);
-        toast('No se pudo conectar con Google Drive.');
-      }
-    };
-    container.querySelector('#btn-link-drive-folder')?.addEventListener('click', linkFolder);
-    container.querySelector('#btn-change-drive-folder')?.addEventListener('click', linkFolder);
-    container.querySelector('#btn-check-drive')?.addEventListener('click', () => syncFromDrive({ auto: false }));
+    wireDriveLinkSection(container, {
+      onLink: async () => {
+        try {
+          const picked = await openFolderPicker();
+          if (!picked) return;
+          await updateObra(obraId, { personalDriveFolderId: picked.id, personalDriveFolderName: picked.name });
+          obra.personalDriveFolderId = picked.id;
+          obra.personalDriveFolderName = picked.name;
+          uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
+          toast(`Carpeta vinculada: "${picked.name}".`);
+          paint();
+          syncFromDrive({ auto: false });
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google Drive.');
+        }
+      },
+      onSync: () => syncFromDrive({ auto: false }),
+    });
 
     const dateInput = container.querySelector('#ssma-date');
     const directoInput = container.querySelector('#ssma-directo');

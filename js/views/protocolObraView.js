@@ -2,7 +2,9 @@ import { getObra, updateObra, getInstancesByObra, createProtocolInstance, delete
 import { PROTOCOL_TEMPLATES } from '../protocolTemplates.js';
 import { navigate } from '../router.js';
 import { escapeHTML, formatDate, confirmDialog, toast } from '../utils.js';
-import { signIn, getProtocolsRootFolder, findOrCreateDriveFolder, openFolderPicker } from '../googleDrive.js';
+import { signIn, getSignedInEmail, getProtocolsRootFolder, findOrCreateDriveFolder, openFolderPicker } from '../googleDrive.js';
+import { isAdmin } from '../permissions.js';
+import { uploadObrasIndex } from '../obraSync.js';
 
 const STATUS_LABEL = { draft: 'Borrador', emitted: 'Emitido' };
 
@@ -11,17 +13,20 @@ const STATUS_LABEL = { draft: 'Borrador', emitted: 'Emitido' };
  * empezar uno nuevo eligiendo una de las 100 plantillas.
  */
 export async function renderProtocolObraView(container, obraId) {
-  const [obra, instances] = await Promise.all([getObra(obraId), getInstancesByObra(obraId)]);
+  const [obra, instances, email] = await Promise.all([getObra(obraId), getInstancesByObra(obraId), getSignedInEmail()]);
   if (!obra) {
     navigate('/protocolos');
     return;
   }
+  const admin = isAdmin(email);
 
   container.innerHTML = `
     <header class="app-header">
       <button class="icon-btn" id="btn-back" title="Volver">←</button>
       <span class="header-title">${escapeHTML(obra.name)}</span>
-      <button class="icon-btn" id="btn-drive-link" title="${obra.driveObraFolderId ? 'Enlazada con Google Drive' : 'Vincular con Google Drive'}">${obra.driveObraFolderId ? '☁️' : '🔗'}</button>
+      ${admin
+        ? `<button class="icon-btn" id="btn-drive-link" title="${obra.driveObraFolderId ? 'Enlazada con Google Drive' : 'Vincular con Google Drive'}">${obra.driveObraFolderId ? '☁️' : '🔗'}</button>`
+        : (obra.driveObraFolderId ? `<span class="icon-btn" title="Enlazada con Google Drive">☁️</span>` : '')}
     </header>
     <main class="view-content">
       ${instances.length ? `
@@ -53,7 +58,7 @@ export async function renderProtocolObraView(container, obraId) {
 
   container.querySelector('#btn-back').addEventListener('click', () => navigate('/protocolos'));
 
-  container.querySelector('#btn-drive-link').addEventListener('click', async () => {
+  container.querySelector('#btn-drive-link')?.addEventListener('click', async () => {
     if (obra.driveObraFolderId) {
       const ok = await confirmDialog(`Esta obra está enlazada con "${obra.driveObraFolderName}" en Drive. ¿Desenlazarla? Lo que ya subiste queda en Drive tal como está; los protocolos que se emitan después no se subirán solos.`);
       if (!ok) return;
@@ -62,6 +67,7 @@ export async function renderProtocolObraView(container, obraId) {
         planosDriveFolderId: null, planosDriveFolderName: null,
         signedDriveFolderId: null, signedDriveFolderName: null,
       });
+      uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
       toast('Obra desenlazada.');
       renderProtocolObraView(container, obraId);
       return;
@@ -104,6 +110,7 @@ export async function renderProtocolObraView(container, obraId) {
         signedDriveFolderId: firmados.id,
         signedDriveFolderName: firmados.name,
       });
+      uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
       toast(`Obra enlazada con "${picked.name}" en Drive.`);
       renderProtocolObraView(container, obraId);
     } catch (err) {

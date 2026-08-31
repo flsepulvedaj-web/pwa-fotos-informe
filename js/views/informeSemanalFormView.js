@@ -26,9 +26,10 @@ import {
 } from '../costosDashboard.js';
 import { computeRdiKPI } from '../rdiDashboard.js';
 import { getSignedInEmail, openFolderPicker, uploadFile } from '../googleDrive.js';
-import { modulesForEmail, getCachedPermissions } from '../permissions.js';
+import { modulesForEmail, getCachedPermissions, isAdmin } from '../permissions.js';
 import { openSignaturePad } from '../signaturePad.js';
 import { buildInformeSemanalPDF } from '../informeSemanalPdfExport.js';
+import { uploadObrasIndex } from '../obraSync.js';
 import { sanitizeFilename } from '../pdfExport.js';
 import { navigate } from '../router.js';
 import { uuid, escapeHTML, toast } from '../utils.js';
@@ -90,6 +91,7 @@ export async function renderInformeSemanalFormView(container, informeId) {
   const email = await getSignedInEmail();
   const allowedModules = modulesForEmail(email, getCachedPermissions());
   const canSeeCostos = allowedModules.includes('costos');
+  const admin = isAdmin(email);
 
   // Firmas capturadas en esta sesión de edición, por fila (rowId de sesión
   // → Blob). Se precarga con lo que ya estaba guardado en el informe.
@@ -381,6 +383,12 @@ export async function renderInformeSemanalFormView(container, informeId) {
         });
 
         let folderId = obra.informeDriveFolderId;
+        if (!folderId && !admin) {
+          toast('Esta obra todavía no tiene carpeta de Drive para el Informe Semanal — pedile al admin que la vincule primero.');
+          btn.disabled = false;
+          btn.textContent = informe.status === 'emitted' ? 'Volver a emitir' : '📤 Emitir informe (PDF)';
+          return;
+        }
         if (!folderId) {
           toast('Elige en qué carpeta quieres guardar los informes semanales de esta obra…');
           let picked;
@@ -400,6 +408,7 @@ export async function renderInformeSemanalFormView(container, informeId) {
           await updateObra(obra.id, { informeDriveFolderId: picked.id, informeDriveFolderName: picked.name });
           obra.informeDriveFolderId = picked.id;
           obra.informeDriveFolderName = picked.name;
+          uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
         }
 
         btn.textContent = 'Generando PDF…';

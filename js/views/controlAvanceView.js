@@ -1,7 +1,10 @@
 import { getObra, updateObra, addScheduleSnapshot, getScheduleSnapshotsByObra, deleteScheduleSnapshot } from '../db.js';
 import { parseScheduleCSV, parseScheduleXLSX, buildTaskTree } from '../controlScheduleParser.js';
-import { openFolderPicker, isSignedIn } from '../googleDrive.js';
+import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { syncAvanceFromDrive } from '../controlSync.js';
+import { uploadObrasIndex } from '../obraSync.js';
+import { isAdmin } from '../permissions.js';
+import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
 import { navigate } from '../router.js';
 import { escapeHTML, confirmDialog, toast } from '../utils.js';
 
@@ -125,6 +128,7 @@ export async function renderControlAvanceView(container, obraId) {
     return;
   }
 
+  const admin = isAdmin(await getSignedInEmail());
   let snapshots = await getScheduleSnapshotsByObra(obraId);
   let selectedSnapshotId = snapshots[0]?.id || null;
   let tree = [];
@@ -185,18 +189,13 @@ export async function renderControlAvanceView(container, obraId) {
         <span class="header-title">Avance — ${escapeHTML(obra.name)}</span>
       </header>
       <main class="view-content">
-        <section class="avance-drive-link">
-          ${obra.programacionDriveFolderId ? `
-            <div class="avance-drive-linked">☁️ Carpeta vinculada: <strong>${escapeHTML(obra.programacionDriveFolderName)}</strong></div>
-            <div class="avance-drive-actions">
-              <button type="button" class="btn btn-primary" id="btn-check-drive">🔄 Buscar programación nueva</button>
-              <button type="button" class="btn btn-secondary" id="btn-change-drive-folder">Cambiar carpeta</button>
-            </div>
-          ` : `
-            <button type="button" class="btn btn-primary" id="btn-link-drive-folder">🔗 Vincular carpeta de Drive</button>
-            <p class="avance-upload-hint">Elegí la carpeta donde vas dejando la programación (CSV o Excel, la que ya armaste en Drive) — de ahí en adelante la app la revisa sola.</p>
-          `}
-        </section>
+        ${driveLinkSectionHTML({
+          admin,
+          folderId: obra.programacionDriveFolderId,
+          folderName: obra.programacionDriveFolderName,
+          syncLabel: '🔄 Buscar programación nueva',
+          hintText: 'Elegí la carpeta donde vas dejando la programación (CSV o Excel, la que ya armaste en Drive) — de ahí en adelante la app la revisa sola.',
+        })}
 
         <section class="avance-upload">
           <button type="button" class="btn btn-secondary" id="btn-upload-csv">📤 O subir la programación a mano (CSV o Excel)</button>
@@ -243,24 +242,25 @@ export async function renderControlAvanceView(container, obraId) {
 
     container.querySelector('#btn-back').addEventListener('click', () => navigate(`/control/obra/${obraId}`));
 
-    const linkFolder = async () => {
-      try {
-        const picked = await openFolderPicker();
-        if (!picked) return;
-        await updateObra(obraId, { programacionDriveFolderId: picked.id, programacionDriveFolderName: picked.name });
-        obra.programacionDriveFolderId = picked.id;
-        obra.programacionDriveFolderName = picked.name;
-        toast(`Carpeta vinculada: "${picked.name}".`);
-        paint();
-        checkDriveForNewProgramacion({ auto: false });
-      } catch (err) {
-        console.error(err);
-        toast('No se pudo conectar con Google Drive.');
-      }
-    };
-    container.querySelector('#btn-link-drive-folder')?.addEventListener('click', linkFolder);
-    container.querySelector('#btn-change-drive-folder')?.addEventListener('click', linkFolder);
-    container.querySelector('#btn-check-drive')?.addEventListener('click', () => checkDriveForNewProgramacion({ auto: false }));
+    wireDriveLinkSection(container, {
+      onLink: async () => {
+        try {
+          const picked = await openFolderPicker();
+          if (!picked) return;
+          await updateObra(obraId, { programacionDriveFolderId: picked.id, programacionDriveFolderName: picked.name });
+          obra.programacionDriveFolderId = picked.id;
+          obra.programacionDriveFolderName = picked.name;
+          uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
+          toast(`Carpeta vinculada: "${picked.name}".`);
+          paint();
+          checkDriveForNewProgramacion({ auto: false });
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google Drive.');
+        }
+      },
+      onSync: () => checkDriveForNewProgramacion({ auto: false }),
+    });
 
     const csvInput = container.querySelector('#avance-csv-input');
     container.querySelector('#btn-upload-csv').addEventListener('click', () => csvInput.click());

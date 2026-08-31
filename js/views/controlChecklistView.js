@@ -14,8 +14,11 @@ import {
   deleteChecklistPhoto,
 } from '../db.js';
 import { DEFAULT_CHECKLIST_TYPES, CHECKLIST_STATUS } from '../controlChecklistTemplates.js';
-import { openFolderPicker, isSignedIn } from '../googleDrive.js';
+import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { uploadChecklistEntry, syncChecklistFromDrive } from '../controlSync.js';
+import { uploadObrasIndex } from '../obraSync.js';
+import { isAdmin } from '../permissions.js';
+import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
 import { navigate, getQueryParams } from '../router.js';
 import { escapeHTML, downscaleImageBlob, confirmDialog, toast, promptDialog } from '../utils.js';
 
@@ -59,6 +62,7 @@ export async function renderControlChecklistView(container, obraId) {
     return;
   }
 
+  const admin = isAdmin(await getSignedInEmail());
   let types = await getChecklistTypesByObra(obraId);
   if (!types.length) {
     types = await Promise.all(DEFAULT_CHECKLIST_TYPES.map((t, i) => createChecklistType({ obraId, order: i, ...t })));
@@ -135,18 +139,13 @@ export async function renderControlChecklistView(container, obraId) {
         <button class="icon-btn" id="btn-delete-entry" title="Eliminar checklist de este día">🗑️</button>
       </header>
       <main class="view-content protocol-form">
-        <section class="avance-drive-link">
-          ${obra.checklistDriveFolderId ? `
-            <div class="avance-drive-linked">☁️ Compartido con el equipo en: <strong>${escapeHTML(obra.checklistDriveFolderName)}</strong></div>
-            <div class="avance-drive-actions">
-              <button type="button" class="btn btn-secondary" id="btn-check-drive">🔄 Buscar checklist nuevo</button>
-              <button type="button" class="btn btn-secondary" id="btn-change-drive-folder">Cambiar carpeta</button>
-            </div>
-          ` : `
-            <button type="button" class="btn btn-primary" id="btn-link-drive-folder">🔗 Compartir con el equipo (Drive)</button>
-            <p class="avance-upload-hint">Vinculá una carpeta de Drive para que el checklist que llene tu ITO en terreno te llegue a vos también.</p>
-          `}
-        </section>
+        ${driveLinkSectionHTML({
+          admin,
+          folderId: obra.checklistDriveFolderId,
+          folderName: obra.checklistDriveFolderName,
+          syncLabel: '🔄 Buscar checklist nuevo',
+          hintText: 'Vinculá una carpeta de Drive para que el checklist que llene tu ITO en terreno te llegue a vos también.',
+        })}
 
         <div class="checklist-type-tabs">
           ${types.map((t) => `
@@ -217,24 +216,25 @@ export async function renderControlChecklistView(container, obraId) {
 
     container.querySelector('#btn-back').addEventListener('click', () => navigate(`/control/obra/${obraId}`));
 
-    const linkFolder = async () => {
-      try {
-        const picked = await openFolderPicker();
-        if (!picked) return;
-        await updateObra(obraId, { checklistDriveFolderId: picked.id, checklistDriveFolderName: picked.name });
-        obra.checklistDriveFolderId = picked.id;
-        obra.checklistDriveFolderName = picked.name;
-        toast(`Carpeta vinculada: "${picked.name}".`);
-        paint();
-        syncFromDrive({ auto: false });
-      } catch (err) {
-        console.error(err);
-        toast('No se pudo conectar con Google Drive.');
-      }
-    };
-    container.querySelector('#btn-link-drive-folder')?.addEventListener('click', linkFolder);
-    container.querySelector('#btn-change-drive-folder')?.addEventListener('click', linkFolder);
-    container.querySelector('#btn-check-drive')?.addEventListener('click', () => syncFromDrive({ auto: false }));
+    wireDriveLinkSection(container, {
+      onLink: async () => {
+        try {
+          const picked = await openFolderPicker();
+          if (!picked) return;
+          await updateObra(obraId, { checklistDriveFolderId: picked.id, checklistDriveFolderName: picked.name });
+          obra.checklistDriveFolderId = picked.id;
+          obra.checklistDriveFolderName = picked.name;
+          uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
+          toast(`Carpeta vinculada: "${picked.name}".`);
+          paint();
+          syncFromDrive({ auto: false });
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google Drive.');
+        }
+      },
+      onSync: () => syncFromDrive({ auto: false }),
+    });
 
     container.querySelectorAll('.checklist-type-tab').forEach((tab) => {
       tab.addEventListener('click', async () => {

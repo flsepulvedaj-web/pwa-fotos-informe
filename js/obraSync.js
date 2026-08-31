@@ -81,13 +81,42 @@ export async function syncObrasFromDrive() {
   }
 
   // 2. Merge normal de obras vivas.
+  //
+  // OJO con esto: no se puede simplemente "reemplazar entero" el registro
+  // local por el remoto aunque sea más nuevo (`remote.updatedAt` mayor).
+  // Cada obra tiene ~10 campos de vinculación de Drive, uno por módulo
+  // (driveObraFolderId de Protocolos, checklistDriveFolderId de Control,
+  // costosDriveFolderId de Costos, etc.) — si Pancho vincula Drive en
+  // Costos desde su teléfono, y ANTES de que le llegue ese cambio al
+  // teléfono de Sergio, Sergio guarda cualquier cosa sin relación (lo que
+  // sea que actualice el registro de la obra), su versión local — que
+  // nunca tuvo `costosDriveFolderId` porque a él nunca le llegó — queda
+  // con un `updatedAt` más nuevo y "gana" el reemplazo, BORRANDO sin
+  // querer la vinculación que Pancho acababa de hacer para todo el equipo.
+  // Esto pasó de verdad (Sergio no podía vincular Drive en ningún módulo).
+  // Por eso se fusiona campo por campo: un campo vacío/ausente en el
+  // remoto NUNCA borra uno que el teléfono local ya tenía. El único costo
+  // es que "desvincular" una carpeta (ponerla en null a propósito) no se
+  // propaga sola a los demás — aceptable, es rarísimo, contra perder datos
+  // de verdad como pasó hoy.
   const localObras = await getAllObras();
   const localById = new Map(localObras.map((o) => [o.id, o]));
   for (const remote of remoteObras) {
     if (localTombstones.has(remote.id)) continue;
     const local = localById.get(remote.id);
-    if (!local || (remote.updatedAt || 0) > (local.updatedAt || 0)) {
+    if (!local) {
       await upsertObra(remote);
+      changed++;
+      continue;
+    }
+    if ((remote.updatedAt || 0) > (local.updatedAt || 0)) {
+      const merged = { ...remote };
+      for (const key of Object.keys(local)) {
+        if ((remote[key] === undefined || remote[key] === null) && local[key] != null) {
+          merged[key] = local[key];
+        }
+      }
+      await upsertObra(merged);
       changed++;
     }
   }

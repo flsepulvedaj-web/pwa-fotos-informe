@@ -12,9 +12,11 @@ import { CONTROL_STATUS, SIGNATURE_ROLES, GATING_ROLE } from '../protocolTemplat
 import { navigate } from '../router.js';
 import { escapeHTML, formatDate, downscaleImageBlob, confirmDialog, toast } from '../utils.js';
 import { openSignaturePad } from '../signaturePad.js';
-import { listDriveFiles, downloadDriveFile, openFolderPicker, uploadFile } from '../googleDrive.js';
+import { listDriveFiles, downloadDriveFile, openFolderPicker, uploadFile, getSignedInEmail } from '../googleDrive.js';
 import { buildProtocolPDF } from '../protocolPdfExport.js';
 import { sanitizeFilename } from '../pdfExport.js';
+import { isAdmin } from '../permissions.js';
+import { uploadObrasIndex } from '../obraSync.js';
 
 const HEADER_FIELDS = [
   { key: 'obra', label: 'Obra' },
@@ -49,7 +51,8 @@ export async function renderProtocolFormView(container, instanceId) {
     navigate('/protocolos');
     return;
   }
-  const [photos, obra] = await Promise.all([getProtocolPhotosByInstance(instanceId), getObra(instance.obraId)]);
+  const [photos, obra, email] = await Promise.all([getProtocolPhotosByInstance(instanceId), getObra(instance.obraId), getSignedInEmail()]);
+  const admin = isAdmin(email);
   const readOnly = instance.status === 'emitted';
   const gatingSigned = !!instance.signatures?.[GATING_ROLE]?.signatureBlob;
 
@@ -198,6 +201,7 @@ export async function renderProtocolFormView(container, instanceId) {
       await updateObra(obra.id, { planosDriveFolderId: planosFolderId, planosDriveFolderName: planosFolderName });
       obra.planosDriveFolderId = planosFolderId;
       obra.planosDriveFolderName = planosFolderName;
+      uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
     }
 
     let files;
@@ -328,6 +332,11 @@ export async function renderProtocolFormView(container, instanceId) {
       }
 
       let signedFolderId = obra.signedDriveFolderId;
+      if (!signedFolderId && !admin) {
+        toast('Todavía no hay carpeta para los protocolos firmados de esta obra — pedile al admin que la elija primero.');
+        btn.disabled = false;
+        return;
+      }
       if (!signedFolderId) {
         toast('Elige en qué carpeta quieres guardar los protocolos firmados de esta obra…');
         let picked;
@@ -347,6 +356,7 @@ export async function renderProtocolFormView(container, instanceId) {
         await updateObra(obra.id, { signedDriveFolderId: picked.id, signedDriveFolderName: picked.name });
         obra.signedDriveFolderId = picked.id;
         obra.signedDriveFolderName = picked.name;
+        uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
       }
 
       btn.textContent = 'Generando PDF…';

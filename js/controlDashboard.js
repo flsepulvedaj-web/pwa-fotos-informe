@@ -13,13 +13,29 @@ function todayLocalISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/** Historial de avance programado a partir de los snapshots subidos. */
+/** Historial de avance programado a partir de los snapshots subidos — SOLO
+ * los de tipo 'real' (avance físico real en terreno): es el número de
+ * verdad, no el objetivo. Los de tipo 'proyectada' no entran acá, solo
+ * alimentan la Curva S (ver computeSCurve más abajo). Los snapshots de
+ * antes de que existiera `scheduleType` (undefined) se tratan como 'real'. */
 export function computeAvanceKPI(snapshots) {
-  const sorted = [...snapshots].sort((a, b) => a.uploadedAt - b.uploadedAt);
+  const real = snapshots.filter((s) => (s.scheduleType || 'real') === 'real');
+  const sorted = [...real].sort((a, b) => a.uploadedAt - b.uploadedAt);
   return {
     latestPercent: sorted.length ? sorted[sorted.length - 1].overallPercent : null,
     history: sorted.map((s) => ({ date: s.uploadedAt, percent: s.overallPercent })),
   };
+}
+
+/** Curva S: el % de avance en el tiempo de cada tipo por separado, para
+ * graficar Proyectada vs Física Real superpuestas — el gráfico estándar de
+ * control de obra. */
+export function computeSCurve(snapshots) {
+  const byType = (type) => [...snapshots]
+    .filter((s) => (s.scheduleType || 'real') === type)
+    .sort((a, b) => a.uploadedAt - b.uploadedAt)
+    .map((s) => ({ date: s.uploadedAt, percent: s.overallPercent }));
+  return { proyectada: byType('proyectada'), real: byType('real') };
 }
 
 /** Historial de personal en obra (SSMA/personal) — últimos 14 días con datos. */
@@ -96,6 +112,37 @@ export function renderLineChartSVG(points, { width = 300, height = 70 } = {}) {
   `;
 }
 
+/** Curva S en SVG (sin librería): 2 líneas superpuestas, Proyectada
+ * (--color-primary) y Física Real (--color-accent), con leyenda chica. Si
+ * a alguna de las 2 le falta historial (menos de 2 puntos) esa línea
+ * simplemente no se dibuja — el gráfico igual sirve con una sola. */
+export function renderSCurveChartSVG(proyectada, real, { width = 300, height = 90 } = {}) {
+  if (proyectada.length < 2 && real.length < 2) return '';
+  const chartH = height;
+  function toPoints(series) {
+    if (series.length < 2) return null;
+    const stepX = width / (series.length - 1);
+    return series.map((p, i) => `${i * stepX},${chartH - (Math.min(100, p.percent) / 100) * chartH}`).join(' ');
+  }
+  const proyectadaPoints = toPoints(proyectada);
+  const realPoints = toPoints(real);
+  const lastReal = real[real.length - 1];
+  const lastProyectada = proyectada[proyectada.length - 1];
+
+  return `
+    <svg viewBox="0 0 ${width} ${chartH + 34}" class="dashboard-chart" preserveAspectRatio="none">
+      ${proyectadaPoints ? `<polyline points="${proyectadaPoints}" fill="none" stroke="var(--color-primary)" stroke-width="2.5" stroke-dasharray="4 3" vector-effect="non-scaling-stroke" />` : ''}
+      ${realPoints ? `<polyline points="${realPoints}" fill="none" stroke="var(--color-accent)" stroke-width="2.5" vector-effect="non-scaling-stroke" />` : ''}
+      <g font-size="10">
+        <line x1="0" y1="${chartH + 14}" x2="14" y2="${chartH + 14}" stroke="var(--color-primary)" stroke-width="2.5" stroke-dasharray="4 3" />
+        <text x="18" y="${chartH + 17}" fill="var(--color-text-muted)">Proyectada${lastProyectada ? ' ' + lastProyectada.percent + '%' : ''}</text>
+        <line x1="140" y1="${chartH + 14}" x2="154" y2="${chartH + 14}" stroke="var(--color-accent)" stroke-width="2.5" />
+        <text x="158" y="${chartH + 17}" fill="var(--color-text-muted)">Real${lastReal ? ' ' + lastReal.percent + '%' : ''}</text>
+      </g>
+    </svg>
+  `;
+}
+
 /** Gráfico de barras simple en SVG — personal en obra en el tiempo. */
 export function renderBarChartSVG(points, { width = 300, height = 70 } = {}) {
   if (points.length < 2) return '';
@@ -129,7 +176,8 @@ function parseLocalDate(iso) {
 }
 
 export function computeAtrasadas(snapshots) {
-  const sorted = [...snapshots].sort((a, b) => b.uploadedAt - a.uploadedAt);
+  const real = snapshots.filter((s) => (s.scheduleType || 'real') === 'real');
+  const sorted = [...real].sort((a, b) => b.uploadedAt - a.uploadedAt);
   const latest = sorted[0];
   if (!latest) return [];
   const today = new Date();

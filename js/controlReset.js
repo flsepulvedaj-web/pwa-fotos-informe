@@ -55,15 +55,16 @@ export async function resetPendientes(obraId, obra) {
     await deleteScheduleSnapshot(s.id);
   }
 
-  const [checklistDrive, avanceDrive] = await Promise.all([
+  const [checklistDrive, avanceRealDrive, avanceProyectadaDrive] = await Promise.all([
     trashAllInFolder(obra.checklistDriveFolderId, listDriveJSONFiles),
     trashAllInFolder(obra.programacionDriveFolderId, listDriveScheduleFiles),
+    trashAllInFolder(obra.programacionProyectadaDriveFolderId, listDriveScheduleFiles),
   ]);
 
   return {
     checklistBorrados: entries.length,
     snapshotsBorrados: snapshots.length,
-    driveOk: checklistDrive.ok + avanceDrive.ok,
-    driveFailed: checklistDrive.failed + avanceDrive.failed,
+    driveOk: checklistDrive.ok + avanceRealDrive.ok + avanceProyectadaDrive.ok,
+    driveFailed: checklistDrive.failed + avanceRealDrive.failed + avanceProyectadaDrive.failed,
   };
 }

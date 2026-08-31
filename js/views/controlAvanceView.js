@@ -1,4 +1,4 @@
-import { getObra, updateObra, addScheduleSnapshot, getScheduleSnapshotsByObra, deleteScheduleSnapshot } from '../db.js';
+import { getObra, updateObra, addScheduleSnapshot, getScheduleSnapshotsByObraAndType, deleteScheduleSnapshot } from '../db.js';
 import { parseScheduleCSV, parseScheduleXLSX, buildTaskTree } from '../controlScheduleParser.js';
 import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { syncAvanceFromDrive } from '../controlSync.js';
@@ -115,11 +115,13 @@ function renderTaskTreeRows(nodes, depth, collapsedSet) {
 }
 
 /**
- * Avance programado: se importa la programación como CSV exportado de
- * Project, ya sea subiéndolo a mano o vinculando una carpeta de Drive donde
- * Pancho la va dejando — cada importación crea un snapshot nuevo (no pisa
- * el anterior) así el dashboard puede graficar avance en el tiempo. Las
- * tareas atrasadas (fecha fin pasada y % < 100) quedan resaltadas.
+ * Avance programado: Pancho lleva 2 programaciones de Project por obra —
+ * "Proyectada" (el plan original) y "Física Real" (el avance de verdad en
+ * terreno) — cada una con su propia carpeta de Drive. El listado/tabla de
+ * tareas SOLO muestra Física Real (es la que se revisa en el día a día);
+ * Proyectada no se lista, solo alimenta la Curva S del dashboard
+ * (controlDashboard.js / controlObraView.js) que compara ambas en el
+ * tiempo. Cada importación crea un snapshot nuevo (no pisa el anterior).
  */
 export async function renderControlAvanceView(container, obraId) {
   const obra = await getObra(obraId);
@@ -129,7 +131,9 @@ export async function renderControlAvanceView(container, obraId) {
   }
 
   const admin = isAdmin(await getSignedInEmail());
-  let snapshots = await getScheduleSnapshotsByObra(obraId);
+  // Solo Física Real se lista/tabula — Proyectada se sigue guardando (para
+  // la Curva S) pero no aparece acá.
+  let snapshots = await getScheduleSnapshotsByObraAndType(obraId, 'real');
   let selectedSnapshotId = snapshots[0]?.id || null;
   let tree = [];
   let collapsedSet = new Set();
@@ -143,30 +147,31 @@ export async function renderControlAvanceView(container, obraId) {
     treeBuiltForId = selectedSnapshotId;
   }
 
-  async function importParsed({ tasks, overallPercent }, { driveFileId = null, driveFileName = null, uploadedAt } = {}) {
-    const snapshot = await addScheduleSnapshot({ obraId, tasks, overallPercent, driveFileId, driveFileName, ...(uploadedAt ? { uploadedAt } : {}) });
-    snapshots = await getScheduleSnapshotsByObra(obraId);
-    selectedSnapshotId = snapshot.id;
+  async function importParsed({ tasks, overallPercent }, scheduleType, { driveFileId = null, driveFileName = null, uploadedAt } = {}) {
+    const snapshot = await addScheduleSnapshot({ obraId, tasks, overallPercent, scheduleType, driveFileId, driveFileName, ...(uploadedAt ? { uploadedAt } : {}) });
+    snapshots = await getScheduleSnapshotsByObraAndType(obraId, 'real');
+    if (scheduleType === 'real') selectedSnapshotId = snapshot.id;
     return { tasks, overallPercent };
   }
 
   /**
-   * Trae TODAS las programaciones nuevas de la carpeta vinculada (no solo
-   * la más nueva) — Pancho/Sergio van dejando un archivo por revisión, así
-   * que cada uno es un punto real del historial de avance. La lógica de
+   * Trae TODAS las programaciones nuevas de la carpeta vinculada de un tipo
+   * (no solo la más nueva) — Pancho/Sergio van dejando un archivo por
+   * revisión, así que cada uno es un punto real del historial. La lógica de
    * traer+parsear vive en controlSync.js, compartida con el Dashboard (que
-   * también sincroniza al abrir la obra, sin tener que entrar acá).
+   * también sincroniza ambos tipos al abrir la obra, sin entrar acá).
    */
-  async function checkDriveForNewProgramacion({ auto }) {
-    if (!obra.programacionDriveFolderId) return;
+  async function checkDriveForNewProgramacion(scheduleType, { auto }) {
+    const folderId = scheduleType === 'real' ? obra.programacionDriveFolderId : obra.programacionProyectadaDriveFolderId;
+    if (!folderId) return;
     // El chequeo automático nunca debe disparar el popup de sesión de
     // Google — eso solo puede pasar desde un toque directo (botón).
     if (auto && !isSignedIn()) return;
     try {
-      const count = await syncAvanceFromDrive(obraId, obra.programacionDriveFolderId);
+      const count = await syncAvanceFromDrive(obraId, folderId, scheduleType);
       if (count) {
-        snapshots = await getScheduleSnapshotsByObra(obraId);
-        selectedSnapshotId = snapshots[0]?.id || null;
+        snapshots = await getScheduleSnapshotsByObraAndType(obraId, 'real');
+        if (scheduleType === 'real') selectedSnapshotId = snapshots[0]?.id || null;
         toast(count === 1 ? '📥 Nueva programación importada desde Drive.' : `📥 ${count} programaciones nuevas importadas desde Drive.`);
         paint();
       } else if (!auto) {
@@ -175,6 +180,21 @@ export async function renderControlAvanceView(container, obraId) {
     } catch (err) {
       console.error('Error buscando programación en Drive:', err);
       if (!auto) toast('No se pudo conectar con Drive.');
+    }
+  }
+
+  async function handleFileUpload(file, scheduleType) {
+    try {
+      const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+      const parsed = isExcel
+        ? parseScheduleXLSX(await file.arrayBuffer())
+        : parseScheduleCSV(await readTextSmart(file));
+      const { tasks, overallPercent } = await importParsed(parsed, scheduleType);
+      toast(`Programación (${scheduleType === 'real' ? 'Física Real' : 'Proyectada'}) cargada: ${tasks.length} tareas, ${overallPercent}% de avance.`);
+      paint();
+    } catch (err) {
+      console.error('Error leyendo el archivo de programación:', err);
+      toast(err.message || 'No se pudo leer el archivo. Revisa que sea el CSV o Excel exportado de Project.');
     }
   }
 
@@ -191,21 +211,36 @@ export async function renderControlAvanceView(container, obraId) {
       <main class="view-content">
         ${driveLinkSectionHTML({
           admin,
+          idPrefix: 'real-',
+          title: '📍 Física Real',
           folderId: obra.programacionDriveFolderId,
           folderName: obra.programacionDriveFolderName,
           syncLabel: '🔄 Buscar programación nueva',
-          hintText: 'Elegí la carpeta donde vas dejando la programación (CSV o Excel, la que ya armaste en Drive) — de ahí en adelante la app la revisa sola.',
+          hintText: 'Elegí la carpeta donde vas dejando la programación FÍSICA REAL (CSV o Excel) — de ahí en adelante la app la revisa sola.',
         })}
-
         <section class="avance-upload">
-          <button type="button" class="btn btn-secondary" id="btn-upload-csv">📤 O subir la programación a mano (CSV o Excel)</button>
-          <input type="file" id="avance-csv-input" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          <button type="button" class="btn btn-secondary" id="btn-upload-real">📤 O subir Física Real a mano (CSV o Excel)</button>
+          <input type="file" id="real-csv-input" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+        </section>
+
+        ${driveLinkSectionHTML({
+          admin,
+          idPrefix: 'proyectada-',
+          title: '🎯 Proyectada',
+          folderId: obra.programacionProyectadaDriveFolderId,
+          folderName: obra.programacionProyectadaDriveFolderName,
+          syncLabel: '🔄 Buscar programación nueva',
+          hintText: 'Elegí la carpeta donde vas dejando la programación PROYECTADA (el plan original) — solo alimenta la Curva S del dashboard, no aparece en la tabla de abajo.',
+        })}
+        <section class="avance-upload">
+          <button type="button" class="btn btn-secondary" id="btn-upload-proyectada">📤 O subir Proyectada a mano (CSV o Excel)</button>
+          <input type="file" id="proyectada-csv-input" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
         </section>
 
         ${selected ? `
           <section class="avance-summary">
             <div class="avance-percent">${selected.overallPercent}%</div>
-            <div class="avance-percent-label">avance general</div>
+            <div class="avance-percent-label">avance físico real</div>
             <div class="avance-updated-label${daysSince(selected.uploadedAt) > DAYS_STALE_WARNING ? ' avance-updated-stale' : ''}">
               Última programación: hace ${daysSince(selected.uploadedAt)} día(s)${daysSince(selected.uploadedAt) > DAYS_STALE_WARNING ? ' ⚠️ revisá si se subió la de esta semana' : ''}
             </div>
@@ -213,7 +248,7 @@ export async function renderControlAvanceView(container, obraId) {
           </section>
 
           <div class="avance-snapshot-picker">
-            <label for="avance-snapshot-select">Programación cargada</label>
+            <label for="avance-snapshot-select">Programación cargada (Física Real)</label>
             <select id="avance-snapshot-select">
               ${snapshots.map((s) => `<option value="${s.id}" ${s.id === selectedSnapshotId ? 'selected' : ''}>${formatDateTime(s.uploadedAt)}${s.driveFileName ? ' (Drive)' : ''} — ${s.overallPercent}%</option>`).join('')}
             </select>
@@ -233,8 +268,8 @@ export async function renderControlAvanceView(container, obraId) {
           </div>
         ` : `
           <div class="empty-state">
-            <p>Todavía no has subido ninguna programación.</p>
-            <p>Vinculá la carpeta de Drive o subí el CSV a mano con los botones de arriba.</p>
+            <p>Todavía no has subido ninguna programación Física Real.</p>
+            <p>Vinculá la carpeta de Drive o subila a mano con los botones de arriba.</p>
           </div>
         `}
       </main>
@@ -243,6 +278,7 @@ export async function renderControlAvanceView(container, obraId) {
     container.querySelector('#btn-back').addEventListener('click', () => navigate(`/control/obra/${obraId}`));
 
     wireDriveLinkSection(container, {
+      idPrefix: 'real-',
       onLink: async () => {
         try {
           const picked = await openFolderPicker();
@@ -250,36 +286,53 @@ export async function renderControlAvanceView(container, obraId) {
           await updateObra(obraId, { programacionDriveFolderId: picked.id, programacionDriveFolderName: picked.name });
           obra.programacionDriveFolderId = picked.id;
           obra.programacionDriveFolderName = picked.name;
-          uploadObrasIndex(); // best-effort — le llega al resto del equipo sin esperar a que abran Control
+          uploadObrasIndex();
           toast(`Carpeta vinculada: "${picked.name}".`);
           paint();
-          checkDriveForNewProgramacion({ auto: false });
+          checkDriveForNewProgramacion('real', { auto: false });
         } catch (err) {
           console.error(err);
           toast('No se pudo conectar con Google Drive.');
         }
       },
-      onSync: () => checkDriveForNewProgramacion({ auto: false }),
+      onSync: () => checkDriveForNewProgramacion('real', { auto: false }),
     });
 
-    const csvInput = container.querySelector('#avance-csv-input');
-    container.querySelector('#btn-upload-csv').addEventListener('click', () => csvInput.click());
-    csvInput.addEventListener('change', async () => {
-      const file = csvInput.files[0];
-      csvInput.value = '';
-      if (!file) return;
-      try {
-        const isExcel = /\.(xlsx|xls)$/i.test(file.name);
-        const parsed = isExcel
-          ? parseScheduleXLSX(await file.arrayBuffer())
-          : parseScheduleCSV(await readTextSmart(file));
-        const { tasks, overallPercent } = await importParsed(parsed);
-        toast(`Programación cargada: ${tasks.length} tareas, ${overallPercent}% de avance.`);
-        paint();
-      } catch (err) {
-        console.error('Error leyendo el archivo de programación:', err);
-        toast(err.message || 'No se pudo leer el archivo. Revisa que sea el CSV o Excel exportado de Project.');
-      }
+    wireDriveLinkSection(container, {
+      idPrefix: 'proyectada-',
+      onLink: async () => {
+        try {
+          const picked = await openFolderPicker();
+          if (!picked) return;
+          await updateObra(obraId, { programacionProyectadaDriveFolderId: picked.id, programacionProyectadaDriveFolderName: picked.name });
+          obra.programacionProyectadaDriveFolderId = picked.id;
+          obra.programacionProyectadaDriveFolderName = picked.name;
+          uploadObrasIndex();
+          toast(`Carpeta vinculada: "${picked.name}".`);
+          paint();
+          checkDriveForNewProgramacion('proyectada', { auto: false });
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google Drive.');
+        }
+      },
+      onSync: () => checkDriveForNewProgramacion('proyectada', { auto: false }),
+    });
+
+    const realInput = container.querySelector('#real-csv-input');
+    container.querySelector('#btn-upload-real').addEventListener('click', () => realInput.click());
+    realInput.addEventListener('change', async () => {
+      const file = realInput.files[0];
+      realInput.value = '';
+      if (file) await handleFileUpload(file, 'real');
+    });
+
+    const proyectadaInput = container.querySelector('#proyectada-csv-input');
+    container.querySelector('#btn-upload-proyectada').addEventListener('click', () => proyectadaInput.click());
+    proyectadaInput.addEventListener('change', async () => {
+      const file = proyectadaInput.files[0];
+      proyectadaInput.value = '';
+      if (file) await handleFileUpload(file, 'proyectada');
     });
 
     container.querySelector('#avance-snapshot-select')?.addEventListener('change', (e) => {
@@ -300,7 +353,7 @@ export async function renderControlAvanceView(container, obraId) {
       const ok = await confirmDialog('¿Eliminar esta programación cargada? No se puede deshacer.');
       if (!ok) return;
       await deleteScheduleSnapshot(selectedSnapshotId);
-      snapshots = await getScheduleSnapshotsByObra(obraId);
+      snapshots = await getScheduleSnapshotsByObraAndType(obraId, 'real');
       selectedSnapshotId = snapshots[0]?.id || null;
       toast('Programación eliminada.');
       paint();
@@ -310,6 +363,9 @@ export async function renderControlAvanceView(container, obraId) {
   paint();
 
   if (obra.programacionDriveFolderId) {
-    checkDriveForNewProgramacion({ auto: true });
+    checkDriveForNewProgramacion('real', { auto: true });
+  }
+  if (obra.programacionProyectadaDriveFolderId) {
+    checkDriveForNewProgramacion('proyectada', { auto: true });
   }
 }

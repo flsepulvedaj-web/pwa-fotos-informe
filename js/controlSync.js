@@ -35,10 +35,13 @@ function decodeCsvSmart(buf) {
   return utf8;
 }
 
-/** Trae de Drive las programaciones (.csv o .xlsx/.xls) que todavía no se
- * hayan importado — una por revisión, usa la fecha real de modificación del
- * archivo. Devuelve cuántas se importaron. */
-export async function syncAvanceFromDrive(obraId, folderId) {
+/** Trae de Drive las programaciones (.csv, .xlsx/.xls, o .mpp si `parseMPP`
+ * se pasa) que todavía no se hayan importado — una por revisión, usa la
+ * fecha real de modificación del archivo. `scheduleType` ('real' |
+ * 'proyectada') marca con qué tipo quedan guardados TODOS los archivos de
+ * esta carpeta — se llama una vez por carpeta/tipo (ver
+ * controlAvanceView.js). Devuelve cuántas se importaron. */
+export async function syncAvanceFromDrive(obraId, folderId, scheduleType = 'real', parseMPP = null) {
   if (!folderId) return 0;
   const snapshots = await getScheduleSnapshotsByObra(obraId);
   const files = await listDriveScheduleFiles(folderId);
@@ -47,14 +50,19 @@ export async function syncAvanceFromDrive(obraId, folderId) {
   for (const file of pending) {
     try {
       const blob = await downloadDriveFile(file.id);
-      const isExcel = /\.(xlsx|xls)$/i.test(file.name);
-      const { tasks, overallPercent } = isExcel
-        ? parseScheduleXLSX(await blob.arrayBuffer())
-        : parseScheduleCSV(decodeCsvSmart(await blob.arrayBuffer()));
+      let parsed;
+      if (/\.mpp$/i.test(file.name) && parseMPP) {
+        parsed = await parseMPP(blob);
+      } else if (/\.(xlsx|xls)$/i.test(file.name)) {
+        parsed = parseScheduleXLSX(await blob.arrayBuffer());
+      } else {
+        parsed = parseScheduleCSV(decodeCsvSmart(await blob.arrayBuffer()));
+      }
       await addScheduleSnapshot({
         obraId,
-        tasks,
-        overallPercent,
+        tasks: parsed.tasks,
+        overallPercent: parsed.overallPercent,
+        scheduleType,
         driveFileId: file.id,
         driveFileName: file.name,
         uploadedAt: new Date(file.modifiedTime).getTime(),

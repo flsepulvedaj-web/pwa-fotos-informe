@@ -2201,6 +2201,12 @@ button {
   color: var(--color-text);
 }
 
+.avance-drive-link-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
 .avance-drive-actions {
   display: flex;
   gap: 8px;

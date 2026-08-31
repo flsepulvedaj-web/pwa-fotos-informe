@@ -10,8 +10,9 @@ import {
   computePersonalKPI,
   computeChecklistKPI,
   computeAtrasadas,
-  renderLineChartSVG,
+  computeSCurve,
   renderBarChartSVG,
+  renderSCurveChartSVG,
 } from '../controlDashboard.js';
 import { isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { syncChecklistFromDrive, syncSSMAFromDrive, syncAvanceFromDrive } from '../controlSync.js';
@@ -81,6 +82,8 @@ export async function renderControlObraView(container, obraId) {
     const personal = computePersonalKPI(data.ssmaEntries);
     const checklist = computeChecklistKPI(data.checklistEntries, data.types);
     const atrasadas = computeAtrasadas(data.snapshots);
+    const sCurve = computeSCurve(data.snapshots);
+    const sCurveHTML = renderSCurveChartSVG(sCurve.proyectada, sCurve.real);
 
     container.innerHTML = `
       <header class="app-header">
@@ -103,12 +106,12 @@ export async function renderControlObraView(container, obraId) {
           </div>
         </section>
 
-        ${avance.history.length >= 2 || personal.history.length >= 2 ? `
+        ${sCurveHTML || personal.history.length >= 2 ? `
           <section class="dashboard-charts">
-            ${avance.history.length >= 2 ? `
+            ${sCurveHTML ? `
               <div class="dashboard-chart-card">
-                <div class="dashboard-chart-title">Avance en el tiempo</div>
-                ${renderLineChartSVG(avance.history)}
+                <div class="dashboard-chart-title">Curva S — Proyectada vs Física Real</div>
+                ${sCurveHTML}
               </div>
             ` : ''}
             ${personal.history.length >= 2 ? `
@@ -241,16 +244,17 @@ export async function renderControlObraView(container, obraId) {
   // datos y vuelve a pintar. Nunca dispara el popup de sesión de Google
   // (isSignedIn evita eso; si el token venció, se salta calladito y el
   // usuario puede refrescar sesión desde cualquiera de las 3 secciones).
-  const hasLinkedFolders = obra.checklistDriveFolderId || obra.personalDriveFolderId || obra.programacionDriveFolderId;
+  const hasLinkedFolders = obra.checklistDriveFolderId || obra.personalDriveFolderId || obra.programacionDriveFolderId || obra.programacionProyectadaDriveFolderId;
   if (hasLinkedFolders && isSignedIn()) {
     (async () => {
       try {
-        const [c1, c2, c3] = await Promise.all([
+        const [c1, c2, c3, c4] = await Promise.all([
           obra.checklistDriveFolderId ? syncChecklistFromDrive(obraId, obra.checklistDriveFolderId) : 0,
           obra.personalDriveFolderId ? syncSSMAFromDrive(obraId, obra.personalDriveFolderId) : 0,
-          obra.programacionDriveFolderId ? syncAvanceFromDrive(obraId, obra.programacionDriveFolderId) : 0,
+          obra.programacionDriveFolderId ? syncAvanceFromDrive(obraId, obra.programacionDriveFolderId, 'real') : 0,
+          obra.programacionProyectadaDriveFolderId ? syncAvanceFromDrive(obraId, obra.programacionProyectadaDriveFolderId, 'proyectada') : 0,
         ]);
-        if (c1 || c2 || c3) {
+        if (c1 || c2 || c3 || c4) {
           data = await loadData();
           toast('🔄 Dashboard actualizado con los últimos datos del equipo.');
           paint();

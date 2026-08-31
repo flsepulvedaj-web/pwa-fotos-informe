@@ -551,7 +551,7 @@ export async function deleteProtocolPhoto(id) {
 
 // ---------- Control: Programación (snapshots de avance importados) ----------
 
-export async function addScheduleSnapshot({ obraId, tasks, overallPercent, driveFileId = null, driveFileName = null, uploadedAt = Date.now() }) {
+export async function addScheduleSnapshot({ obraId, tasks, overallPercent, scheduleType = 'real', driveFileId = null, driveFileName = null, uploadedAt = Date.now() }) {
   const store = await tx('controlSchedule', 'readwrite');
   const snapshot = {
     id: uuid(),
@@ -563,6 +563,10 @@ export async function addScheduleSnapshot({ obraId, tasks, overallPercent, drive
     uploadedAt,
     tasks, // [{ name, plannedStart, plannedEnd, plannedPercent, actualPercent }]
     overallPercent,
+    // 'real' (avance físico real en terreno, lo que se lista en la tabla) |
+    // 'proyectada' (el plan original, solo alimenta la Curva S del
+    // dashboard) — ver computeSCurve en controlDashboard.js.
+    scheduleType,
     // Si este snapshot vino de Drive (no de subida manual), se guarda el id
     // del archivo — así "Buscar programación nueva" sabe si ya lo importó.
     driveFileId,
@@ -577,6 +581,13 @@ export async function getScheduleSnapshotsByObra(obraId) {
   const index = store.index('by_obraId');
   const results = await wrap(index.getAll(obraId));
   return results.sort((a, b) => b.uploadedAt - a.uploadedAt);
+}
+
+/** Snapshots de un solo tipo — los de antes de que existiera `scheduleType`
+ * (undefined) se tratan como 'real', es lo que Pancho ya venía cargando. */
+export async function getScheduleSnapshotsByObraAndType(obraId, type) {
+  const all = await getScheduleSnapshotsByObra(obraId);
+  return all.filter((s) => (s.scheduleType || 'real') === type);
 }
 
 export async function deleteScheduleSnapshot(id) {

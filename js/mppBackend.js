@@ -7,10 +7,9 @@
 // (tarea resumen, % general, árbol de tareas) sigue viviendo acá.
 import { parseScheduleCSV } from './controlScheduleParser.js';
 
-// TODO: completar con la URL real una vez que Pancho despliegue
-// vizor-reports-mpp-backend en Google Cloud Run (ver su README.md) — mismo
+// Servidor propio (Java + MPXJ) desplegado en Google Cloud Run — mismo
 // patrón que AI_BACKEND_URL en aiAvance.js.
-const MPP_BACKEND_URL = '';
+const MPP_BACKEND_URL = 'https://vizor-reports-mpp-backend-1005265173127.us-central1.run.app/parse-mpp';
 
 export function isMppBackendConfigured() {
   return !!MPP_BACKEND_URL;

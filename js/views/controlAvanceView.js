@@ -1,7 +1,8 @@
 import { getObra, updateObra, addScheduleSnapshot, getScheduleSnapshotsByObraAndType, deleteScheduleSnapshot } from '../db.js';
 import { parseScheduleCSV, parseScheduleXLSX, buildTaskTree } from '../controlScheduleParser.js';
-import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
+import { openFolderPicker, isSignedIn, signIn, getSignedInEmail } from '../googleDrive.js';
 import { syncAvanceFromDrive } from '../controlSync.js';
+import { parseMPPViaBackend, isMppBackendConfigured } from '../mppBackend.js';
 import { uploadObrasIndex } from '../obraSync.js';
 import { isAdmin } from '../permissions.js';
 import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
@@ -168,7 +169,14 @@ export async function renderControlAvanceView(container, obraId) {
     // Google — eso solo puede pasar desde un toque directo (botón).
     if (auto && !isSignedIn()) return;
     try {
-      const count = await syncAvanceFromDrive(obraId, folderId, scheduleType);
+      // Si hay algún .mpp en la carpeta, syncAvanceFromDrive lo manda al
+      // servidor propio — necesita el token. `signIn()` no muestra el
+      // popup si ya había sesión (que es justo lo que `isSignedIn()` ya
+      // confirmó arriba para el chequeo automático).
+      const parseMPP = isMppBackendConfigured()
+        ? async (blob) => parseMPPViaBackend(blob, await signIn())
+        : null;
+      const count = await syncAvanceFromDrive(obraId, folderId, scheduleType, parseMPP);
       if (count) {
         snapshots = await getScheduleSnapshotsByObraAndType(obraId, 'real');
         if (scheduleType === 'real') selectedSnapshotId = snapshots[0]?.id || null;
@@ -186,9 +194,25 @@ export async function renderControlAvanceView(container, obraId) {
   async function handleFileUpload(file, scheduleType) {
     try {
       const isExcel = /\.(xlsx|xls)$/i.test(file.name);
-      const parsed = isExcel
-        ? parseScheduleXLSX(await file.arrayBuffer())
-        : parseScheduleCSV(await readTextSmart(file));
+      const isMpp = /\.mpp$/i.test(file.name);
+      let parsed;
+      if (isMpp) {
+        // Pide sesión primero (mismo patrón que aiAvance.js): el servidor
+        // necesita el token de Google para confirmar que sos vos.
+        let token;
+        try {
+          token = await signIn();
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google.');
+          return;
+        }
+        parsed = await parseMPPViaBackend(file, token);
+      } else if (isExcel) {
+        parsed = parseScheduleXLSX(await file.arrayBuffer());
+      } else {
+        parsed = parseScheduleCSV(await readTextSmart(file));
+      }
       const { tasks, overallPercent } = await importParsed(parsed, scheduleType);
       toast(`Programación (${scheduleType === 'real' ? 'Física Real' : 'Proyectada'}) cargada: ${tasks.length} tareas, ${overallPercent}% de avance.`);
       paint();
@@ -219,8 +243,8 @@ export async function renderControlAvanceView(container, obraId) {
           hintText: 'Elegí la carpeta donde vas dejando la programación FÍSICA REAL (CSV o Excel) — de ahí en adelante la app la revisa sola.',
         })}
         <section class="avance-upload">
-          <button type="button" class="btn btn-secondary" id="btn-upload-real">📤 O subir Física Real a mano (CSV o Excel)</button>
-          <input type="file" id="real-csv-input" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          <button type="button" class="btn btn-secondary" id="btn-upload-real">📤 O subir Física Real a mano (.mpp, CSV o Excel)</button>
+          <input type="file" id="real-csv-input" accept=".mpp,.csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
         </section>
 
         ${driveLinkSectionHTML({
@@ -233,8 +257,8 @@ export async function renderControlAvanceView(container, obraId) {
           hintText: 'Elegí la carpeta donde vas dejando la programación PROYECTADA (el plan original) — solo alimenta la Curva S del dashboard, no aparece en la tabla de abajo.',
         })}
         <section class="avance-upload">
-          <button type="button" class="btn btn-secondary" id="btn-upload-proyectada">📤 O subir Proyectada a mano (CSV o Excel)</button>
-          <input type="file" id="proyectada-csv-input" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
+          <button type="button" class="btn btn-secondary" id="btn-upload-proyectada">📤 O subir Proyectada a mano (.mpp, CSV o Excel)</button>
+          <input type="file" id="proyectada-csv-input" accept=".mpp,.csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden />
         </section>
 
         ${selected ? `

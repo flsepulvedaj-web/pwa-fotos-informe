@@ -314,7 +314,7 @@ export async function listDriveScheduleFiles(parentId) {
     throw new Error(`Error listando archivos de Drive (${res.status}): ${text}`);
   }
   const data = await res.json();
-  return (data.files || []).filter((f) => /\.(csv|xlsx|xls)$/i.test(f.name));
+  return (data.files || []).filter((f) => /\.(csv|xlsx|xls|mpp)$/i.test(f.name));
 }
 
 /**

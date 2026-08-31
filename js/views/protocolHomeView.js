@@ -1,4 +1,5 @@
-import { getAllObras, createObra, deleteObra } from '../db.js';
+import { getAllObras, createObra } from '../db.js';
+import { deleteObraEverywhere } from '../obraSync.js';
 import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
 import {
@@ -62,10 +63,11 @@ export async function renderProtocolHomeView(container) {
   container.querySelectorAll('.obra-delete-btn').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const ok = await confirmDialog('¿Eliminar esta obra? Se borran también todos sus protocolos, fotos y firmas. Esta acción no se puede deshacer.');
+      const ok = await confirmDialog('¿Eliminar esta obra? Se borra TODO lo que tenga cargado en cualquier módulo (Protocolos, Control, Costos, RDI, Subcontratos, Organismos e Informe Semanal) — y le va a llegar también a los demás teléfonos del equipo la próxima vez que abran la app. No se puede deshacer.');
       if (!ok) return;
-      await deleteObra(btn.dataset.deleteObraId);
-      toast('Obra eliminada.');
+      toast('Eliminando…');
+      await deleteObraEverywhere(btn.dataset.deleteObraId);
+      toast('Obra eliminada — se va a propagar al resto del equipo.');
       renderProtocolHomeView(container);
     });
   });

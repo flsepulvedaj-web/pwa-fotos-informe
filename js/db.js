@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -143,6 +143,18 @@ function openDB() {
       if (!db.objectStoreNames.contains('informesSemanales')) {
         const informesSemanales = db.createObjectStore('informesSemanales', { keyPath: 'id' });
         informesSemanales.createIndex('by_obraId', 'obraId', { unique: false });
+      }
+
+      // Lista de ids de obra borradas (v9) — la sincronización de la lista
+      // de obras (obraSync.js) es aditiva por naturaleza (cada teléfono solo
+      // agrega/actualiza lo que baja de Drive, nunca borra algo que ya tenía
+      // local). Sin esto, borrar una obra duplicada en un teléfono no le
+      // llegaba nunca a los demás — cada uno se quedaba con su propia copia
+      // para siempre. Esta lista ("tumba") se sube junto al índice de obras
+      // y cada teléfono, al sincronizar, borra localmente cualquier obra
+      // cuyo id aparezca acá.
+      if (!db.objectStoreNames.contains('obraTombstones')) {
+        db.createObjectStore('obraTombstones', { keyPath: 'id' });
       }
     };
 
@@ -388,13 +400,67 @@ export async function updateObra(id, changes) {
   return obra;
 }
 
+/**
+ * Borra una obra Y TODO lo que cuelga de ella en cualquier módulo
+ * (Protocolos, Personal, Checklist + fotos, Avance, Costos, RDI,
+ * Subcontratos, Organismos, Informe Semanal) — antes esto solo borraba los
+ * protocolos, dejando huérfano (invisible pero ocupando espacio) todo lo
+ * demás. Se usa tanto desde el botón "Eliminar obra" como al recibir una
+ * tumba (`obraTombstones`) sincronizada desde otro teléfono.
+ */
 export async function deleteObra(id) {
   const instances = await getInstancesByObra(id);
   for (const instance of instances) {
     await deleteProtocolInstance(instance.id);
   }
+
+  const [ssmaEntries, checklistEntries, checklistTypes, snapshots, modificaciones, facturas, reembolsos, rdis, subcontratos, organismos, informes] = await Promise.all([
+    getSSMAEntriesByObra(id),
+    getChecklistEntriesByObra(id),
+    getChecklistTypesByObra(id),
+    getScheduleSnapshotsByObra(id),
+    getCostosModificacionesByObra(id),
+    getCostosFacturasByObra(id),
+    getCostosReembolsosByObra(id),
+    getRdiSolicitudesByObra(id),
+    getSubcontratosByObra(id),
+    getOrganismosTramitesByObra(id),
+    getInformesSemanalesByObra(id),
+  ]);
+
+  for (const e of ssmaEntries) await deleteSSMAEntry(e.id);
+  for (const e of checklistEntries) await deleteChecklistEntry(e.id); // ya borra sus fotos de paso
+  for (const t of checklistTypes) {
+    const store = await tx('controlChecklistTypes', 'readwrite');
+    await wrap(store.delete(t.id));
+  }
+  for (const s of snapshots) await deleteScheduleSnapshot(s.id);
+  for (const m of modificaciones) await deleteCostosModificacion(m.id);
+  for (const f of facturas) await deleteCostosFactura(f.id);
+  for (const r of reembolsos) await deleteCostosReembolso(r.id);
+  for (const r of rdis) await deleteRdiSolicitud(r.id);
+  for (const s of subcontratos) await deleteSubcontrato(s.id);
+  for (const o of organismos) await deleteOrganismoTramite(o.id);
+  for (const inf of informes) await deleteInformeSemanal(inf.id);
+
+  const costosStore = await tx('costosContrato', 'readwrite');
+  await wrap(costosStore.delete(id)); // keyPath es obraId directo, no hace falta buscarlo antes
+
   const store = await tx('obras', 'readwrite');
   await wrap(store.delete(id));
+}
+
+// ---------- Tumbas de obras borradas (para que el borrado se propague) ----------
+
+export async function addObraTombstone(id) {
+  const store = await tx('obraTombstones', 'readwrite');
+  await wrap(store.put({ id, deletedAt: Date.now() }));
+}
+
+export async function getObraTombstoneIds() {
+  const store = await tx('obraTombstones', 'readonly');
+  const all = await wrap(store.getAll());
+  return all.map((t) => t.id);
 }
 
 // ---------- Protocolos: instancias ----------

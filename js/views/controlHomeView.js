@@ -1,8 +1,9 @@
 import { getAllObras, createObra } from '../db.js';
-import { isSignedIn } from '../googleDrive.js';
-import { syncObrasFromDrive, uploadObrasIndex } from '../obraSync.js';
+import { isSignedIn, getSignedInEmail } from '../googleDrive.js';
+import { isAdmin } from '../permissions.js';
+import { syncObrasFromDrive, uploadObrasIndex, deleteObraEverywhere } from '../obraSync.js';
 import { navigate } from '../router.js';
-import { promptDialog, toast, escapeHTML } from '../utils.js';
+import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
 
 /**
  * Pantalla de inicio del módulo Control: lista de obras (las mismas que usa
@@ -16,6 +17,8 @@ import { promptDialog, toast, escapeHTML } from '../utils.js';
  */
 export async function renderControlHomeView(container) {
   let obras = await getAllObras();
+  const email = await getSignedInEmail();
+  const admin = isAdmin(email);
 
   function paint() {
     container.innerHTML = `
@@ -27,10 +30,13 @@ export async function renderControlHomeView(container) {
         ${obras.length ? `
           <section class="obra-grid">
             ${obras.map((o) => `
-              <button class="obra-tile" data-obra-id="${o.id}">
-                <span class="obra-icon">🎛️</span>
-                <span class="obra-name">${escapeHTML(o.name)}</span>
-              </button>
+              <div class="obra-tile-wrap">
+                <button class="obra-tile" data-obra-id="${o.id}">
+                  <span class="obra-icon">🎛️</span>
+                  <span class="obra-name">${escapeHTML(o.name)}</span>
+                </button>
+                ${admin ? `<button class="obra-delete-btn" data-delete-obra-id="${o.id}" title="Eliminar obra">🗑️</button>` : ''}
+              </div>
             `).join('')}
           </section>
         ` : `
@@ -49,6 +55,19 @@ export async function renderControlHomeView(container) {
 
     container.querySelectorAll('.obra-tile').forEach((tile) => {
       tile.addEventListener('click', () => navigate(`/control/obra/${tile.dataset.obraId}`));
+    });
+
+    container.querySelectorAll('.obra-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await confirmDialog('¿Eliminar esta obra? Se borra TODO lo que tenga cargado en Protocolos, Control, Costos, RDI, Subcontratos, Organismos e Informe Semanal — y este borrado le va a llegar también a los demás teléfonos del equipo (Jessi, Sergio) la próxima vez que abran la app. No se puede deshacer.');
+        if (!ok) return;
+        toast('Eliminando…');
+        await deleteObraEverywhere(btn.dataset.deleteObraId);
+        obras = await getAllObras();
+        toast('Obra eliminada — se va a propagar al resto del equipo.');
+        paint();
+      });
     });
 
     container.querySelector('#btn-new-obra').addEventListener('click', async () => {

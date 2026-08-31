@@ -2286,6 +2286,25 @@ button {
   padding: 0 16px 20px;
 }
 
+.presupuesto-cat {
+  margin: 8px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.presupuesto-cat summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  background: var(--color-surface-alt, rgba(0, 0, 0, 0.03));
+}
+
+.presupuesto-cat .avance-table-wrap {
+  padding: 0;
+}
+
 .avance-table {
   width: 100%;
   border-collapse: collapse;

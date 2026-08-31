@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -155,6 +155,16 @@ function openDB() {
       // cuyo id aparezca acá.
       if (!db.objectStoreNames.contains('obraTombstones')) {
         db.createObjectStore('obraTombstones', { keyPath: 'id' });
+      }
+
+      // Presupuesto original detallado por partidas (v10): desglose completo
+      // (categoría, ítem, descripción, unidad, cantidad, precio unitario,
+      // total) extraído de la planilla del contratista — 1 registro por
+      // obra (como costosContrato), se reemplaza entero cada vez que se
+      // vuelve a subir un archivo. Separado de costosContrato porque es una
+      // lista larga, no un puñado de números.
+      if (!db.objectStoreNames.contains('costosPresupuestoDetalle')) {
+        db.createObjectStore('costosPresupuestoDetalle', { keyPath: 'obraId' });
       }
     };
 
@@ -835,6 +845,34 @@ export async function saveCostosContrato({ obraId, presupuestoOficial = 0, monto
   };
   await wrap(store.put(contrato));
   return contrato;
+}
+
+// ---------- Costos: presupuesto original detallado (1 registro por obra) ----------
+
+export async function getCostosPresupuestoDetalle(obraId) {
+  const store = await tx('costosPresupuestoDetalle', 'readonly');
+  return wrap(store.get(obraId));
+}
+
+/** Reemplaza entero el desglose de partidas de una obra (upsert por `obraId`,
+ * igual que costosContrato). `items`: [{categoria, item, descripcion, unidad,
+ * cantidad, precioUnitario, total}]. */
+export async function saveCostosPresupuestoDetalle({ obraId, items = [], grandTotal = 0, sourceFileName = '', updatedAt }) {
+  const store = await tx('costosPresupuestoDetalle', 'readwrite');
+  const detalle = {
+    obraId,
+    items,
+    grandTotal,
+    sourceFileName,
+    updatedAt: updatedAt ?? Date.now(),
+  };
+  await wrap(store.put(detalle));
+  return detalle;
+}
+
+export async function deleteCostosPresupuestoDetalle(obraId) {
+  const store = await tx('costosPresupuestoDetalle', 'readwrite');
+  await wrap(store.delete(obraId));
 }
 
 // ---------- Costos: modificaciones de obra (MO) y proformas ----------

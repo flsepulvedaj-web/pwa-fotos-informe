@@ -1,9 +1,11 @@
-import { getObra, updateObra, getCostosContrato, saveCostosContrato } from '../db.js';
+import { getObra, updateObra, getCostosContrato, saveCostosContrato, getCostosPresupuestoDetalle, saveCostosPresupuestoDetalle, deleteCostosPresupuestoDetalle } from '../db.js';
 import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { uploadContrato, syncContratoFromDrive } from '../costosSync.js';
 import { uploadObrasIndex } from '../obraSync.js';
 import { isAdmin } from '../permissions.js';
 import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
+import { parsePresupuestoDetalleXLSX } from '../costosPresupuestoParser.js';
+import { formatMonto } from '../costosDashboard.js';
 import { navigate } from '../router.js';
 import { toast, escapeHTML } from '../utils.js';
 
@@ -25,6 +27,55 @@ export async function renderCostosContratoView(container, obraId) {
 
   const admin = isAdmin(await getSignedInEmail());
   let contrato = await getCostosContrato(obraId);
+  let presupuestoDetalle = await getCostosPresupuestoDetalle(obraId);
+
+  function renderPresupuestoDetalleHTML() {
+    if (!presupuestoDetalle || !presupuestoDetalle.items?.length) {
+      return '<p class="avance-tree-hint">Todavía no se subió ningún desglose de partidas.</p>';
+    }
+    const groups = new Map();
+    for (const it of presupuestoDetalle.items) {
+      const key = it.categoria || '—';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(it);
+    }
+    const rowsHTML = (items) =>
+      items
+        .map(
+          (i) => `
+        <tr>
+          <td>${escapeHTML(i.item)}</td>
+          <td>${escapeHTML(i.descripcion)}</td>
+          <td>${escapeHTML(i.unidad)}</td>
+          <td>${i.cantidad !== '' ? i.cantidad : ''}</td>
+          <td>${i.precioUnitario !== '' ? formatMonto(i.precioUnitario) : ''}</td>
+          <td>${formatMonto(i.total)}</td>
+        </tr>`
+        )
+        .join('');
+    const groupsHTML = [...groups.entries()]
+      .map(([cat, items]) => {
+        const catTotal = items.reduce((s, i) => s + i.total, 0);
+        return `
+        <details class="presupuesto-cat">
+          <summary>Categoría ${escapeHTML(cat)} — ${formatMonto(catTotal)} (${items.length} partida${items.length === 1 ? '' : 's'})</summary>
+          <div class="avance-table-wrap">
+            <table class="avance-table">
+              <thead><tr><th>Ítem</th><th>Descripción</th><th>Unidad</th><th>Cant.</th><th>P. Unitario</th><th>Total</th></tr></thead>
+              <tbody>${rowsHTML(items)}</tbody>
+            </table>
+          </div>
+        </details>`;
+      })
+      .join('');
+    return `
+      <p class="avance-tree-hint">
+        ${presupuestoDetalle.items.length} partidas · Total: <strong>${formatMonto(presupuestoDetalle.grandTotal)}</strong>
+        ${presupuestoDetalle.sourceFileName ? ` · Archivo: ${escapeHTML(presupuestoDetalle.sourceFileName)}` : ''}
+      </p>
+      ${groupsHTML}
+    `;
+  }
 
   async function syncFromDrive({ auto }) {
     if (!obra.costosDriveFolderId) return;
@@ -86,6 +137,17 @@ export async function renderCostosContratoView(container, obraId) {
             <button type="submit" class="btn btn-primary">Guardar</button>
           </div>
         </form>
+
+        <section class="ssma-form" id="presupuesto-detalle-section">
+          <h2>Desglose de partidas (presupuesto original)</h2>
+          <p class="avance-tree-hint">Subí el Excel del contratista con el detalle de partidas (columnas Unidad, Cantidad, P. Unitario y Total) — queda guardado como referencia del presupuesto original, aparte del monto de arriba.</p>
+          <input type="file" id="presupuesto-file-input" accept=".xlsx,.xls" style="display:none" />
+          <div class="ssma-form-actions">
+            <button type="button" class="btn btn-secondary" id="btn-upload-presupuesto">📄 Subir desglose (Excel)</button>
+            ${presupuestoDetalle ? '<button type="button" class="btn btn-secondary" id="btn-delete-presupuesto">🗑️ Quitar desglose</button>' : ''}
+          </div>
+          ${renderPresupuestoDetalleHTML()}
+        </section>
       </main>
     `;
 
@@ -139,6 +201,47 @@ export async function renderCostosContratoView(container, obraId) {
         if (!ok) toast('⚠️ No se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
       }
     });
+
+    const fileInput = container.querySelector('#presupuesto-file-input');
+    container.querySelector('#btn-upload-presupuesto').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      fileInput.value = '';
+      if (!file) return;
+      try {
+        const buffer = await file.arrayBuffer();
+        const { items, grandTotal, sheetUsed } = parsePresupuestoDetalleXLSX(buffer);
+        const montoRef = contrato?.montoContrato || contrato?.presupuestoOficial || 0;
+        if (montoRef > 0 && Math.abs(grandTotal - montoRef) > montoRef * 0.01) {
+          const seguir = confirm(
+            `Ojo: el desglose que subiste suma ${formatMonto(grandTotal)}, pero el Presupuesto/Monto contrato guardado arriba dice ${formatMonto(montoRef)} — no coinciden. ¿Guardar igual?`
+          );
+          if (!seguir) return;
+        }
+        presupuestoDetalle = await saveCostosPresupuestoDetalle({
+          obraId,
+          items,
+          grandTotal,
+          sourceFileName: file.name,
+        });
+        toast(`Desglose guardado: ${items.length} partidas (hoja "${sheetUsed}").`);
+        paint();
+      } catch (err) {
+        console.error('Error leyendo desglose de presupuesto:', err);
+        toast(`⚠️ ${err.message || 'No se pudo leer el archivo.'}`);
+      }
+    });
+
+    const deleteBtn = container.querySelector('#btn-delete-presupuesto');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm('¿Quitar el desglose de partidas guardado? El monto de presupuesto de arriba no se toca.')) return;
+        await deleteCostosPresupuestoDetalle(obraId);
+        presupuestoDetalle = null;
+        toast('Desglose eliminado.');
+        paint();
+      });
+    }
   }
 
   paint();

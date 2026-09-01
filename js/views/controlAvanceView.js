@@ -87,6 +87,17 @@ function defaultCollapsedSet(tree) {
   return collapsed;
 }
 
+/** Todos los índices con hijos, a cualquier profundidad — para el botón de
+ * "Contraer todo" (a diferencia de defaultCollapsedSet, que deja el nivel
+ * raíz abierto). */
+function allExpandableIndexes(nodes, out = new Set()) {
+  for (const node of nodes) {
+    if (node.children.length) out.add(node.index);
+    allExpandableIndexes(node.children, out);
+  }
+  return out;
+}
+
 function renderTaskTreeRows(nodes, depth, collapsedSet) {
   return nodes.map((node) => {
     const hasChildren = node.children.length > 0;
@@ -286,6 +297,10 @@ export async function renderControlAvanceView(container, obraId) {
             <button type="button" class="btn btn-secondary" id="btn-view-gantt" ${viewMode === 'gantt' ? 'disabled' : ''}>📊 Carta Gantt</button>
           </div>
 
+          <div class="ssma-form-actions">
+            <button type="button" class="btn btn-secondary" id="btn-toggle-all">${collapsedSet.size ? '⏷ Desplegar todo' : '⏶ Contraer todo'}</button>
+          </div>
+
           ${viewMode === 'tabla' ? `
             <p class="avance-tree-hint">Negrita = partida principal (agrupa las tareas de abajo). Tocá ▶ para abrir el detalle.</p>
             <div class="avance-table-wrap">
@@ -369,6 +384,11 @@ export async function renderControlAvanceView(container, obraId) {
       const file = proyectadaInput.files[0];
       proyectadaInput.value = '';
       if (file) await handleFileUpload(file, 'proyectada');
+    });
+
+    container.querySelector('#btn-toggle-all')?.addEventListener('click', () => {
+      collapsedSet = collapsedSet.size ? new Set() : allExpandableIndexes(tree);
+      paint();
     });
 
     container.querySelector('#btn-view-tabla')?.addEventListener('click', () => { viewMode = 'tabla'; paint(); });

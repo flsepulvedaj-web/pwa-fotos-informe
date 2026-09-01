@@ -11,6 +11,7 @@
 // a Drive.
 import { listDriveJSONFiles, listDriveScheduleFiles, downloadDriveFile, uploadJSON, findFileByName, updateFileContent, uploadFile } from './googleDrive.js';
 import { parsePresupuestoDetalleXLSX } from './costosPresupuestoParser.js';
+import { parseEstadoPagoXLSX } from './costosEstadoPagoParser.js';
 import {
   getCostosContrato,
   saveCostosContrato,
@@ -19,6 +20,7 @@ import {
   getCostosModificacionesByObra,
   upsertCostosModificacion,
   getCostosFacturasByObra,
+  addCostosFactura,
   upsertCostosFactura,
   getCostosReembolsosByObra,
   upsertCostosReembolso,
@@ -131,6 +133,53 @@ export async function uploadFactura(folderId, factura) {
 export async function syncFacturasFromDrive(obraId, folderId) {
   if (!folderId) return 0;
   return syncRecordsFromDrive(folderId, 'factura-', obraId, getCostosFacturasByObra, upsertCostosFactura);
+}
+
+/**
+ * Carpeta aparte ("ESTADOS DE PAGO" en Drive) donde el contratista va
+ * dejando un Excel por cada EP — a diferencia de syncFacturasFromDrive (que
+ * sincroniza los REGISTROS ya cargados en la app, como JSON, entre
+ * teléfonos), esto lee Excels crudos y crea un estado de pago nuevo por
+ * cada archivo que todavía no se haya importado (identificado por el id de
+ * Drive del archivo, guardado en `sourceFileId` — así no se duplica si se
+ * vuelve a sincronizar). Cada uno que se crea se sube igual como JSON al
+ * mismo `costosDriveFolderId` de siempre (recibido acá como
+ * `propagateFolderId`), para que le llegue al resto del equipo por el
+ * camino ya conocido.
+ */
+export async function syncEstadosPagoFromDrive(obraId, folderId, propagateFolderId) {
+  if (!folderId) return 0;
+  const files = (await listDriveScheduleFiles(folderId)).filter((f) => /\.xlsx?$/i.test(f.name));
+  if (!files.length) return 0;
+  const existing = await getCostosFacturasByObra(obraId);
+  const already = new Set(existing.map((f) => f.sourceFileId).filter(Boolean));
+
+  let added = 0;
+  for (const file of files) {
+    if (already.has(file.id)) continue;
+    try {
+      const blob = await downloadDriveFile(file.id);
+      const buffer = await blob.arrayBuffer();
+      const parsed = parseEstadoPagoXLSX(buffer);
+      const saved = await addCostosFactura({
+        obraId,
+        tipo: 'contractual',
+        item: parsed.epNumber !== '' ? `EP N°${parsed.epNumber}` : file.name,
+        numeroFactura: parsed.epNumber !== '' ? String(parsed.epNumber) : '',
+        fecha: parsed.fecha || new Date().toISOString().slice(0, 10),
+        avanceNetoPeriodo: parsed.avanceNetoPeriodo,
+        anticipoPeriodo: parsed.anticipoPeriodo,
+        retencionPeriodo: parsed.retencionPeriodo,
+        sourceFileId: file.id,
+        sourceFileName: file.name,
+      });
+      if (propagateFolderId) await uploadFactura(propagateFolderId, saved);
+      added++;
+    } catch (err) {
+      console.error(`No se pudo leer el estado de pago "${file.name}" de Drive:`, err);
+    }
+  }
+  return added;
 }
 
 // ---------- Reembolsos ----------

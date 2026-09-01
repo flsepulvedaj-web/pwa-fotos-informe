@@ -1,14 +1,18 @@
 import {
   getObra,
+  updateObra,
   costosFacturaMontoNeto,
   getCostosFacturasByObra,
   addCostosFactura,
   updateCostosFactura,
   deleteCostosFactura,
 } from '../db.js';
-import { isSignedIn } from '../googleDrive.js';
-import { uploadFactura, syncFacturasFromDrive } from '../costosSync.js';
+import { isSignedIn, getSignedInEmail, openFolderPicker } from '../googleDrive.js';
+import { uploadFactura, syncFacturasFromDrive, syncEstadosPagoFromDrive } from '../costosSync.js';
 import { parseEstadoPagoXLSX } from '../costosEstadoPagoParser.js';
+import { isAdmin } from '../permissions.js';
+import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
+import { uploadObrasIndex } from '../obraSync.js';
 import { navigate } from '../router.js';
 import { escapeHTML, confirmDialog, toast } from '../utils.js';
 import { formatMonto } from '../costosDashboard.js';
@@ -43,6 +47,7 @@ export async function renderCostosFacturacionView(container, obraId) {
     return;
   }
 
+  const admin = isAdmin(await getSignedInEmail());
   let items = await getCostosFacturasByObra(obraId);
   let editingId = null;
 
@@ -64,6 +69,28 @@ export async function renderCostosFacturacionView(container, obraId) {
     }
   }
 
+  // Carpeta aparte ("ESTADOS DE PAGO") donde el contratista deja un Excel
+  // por cada EP — a diferencia de syncFromDrive (que trae los REGISTROS ya
+  // cargados por el equipo), esto lee esos Excels crudos y crea un estado
+  // de pago nuevo por cada archivo que todavía no se haya importado.
+  async function syncEstadosPagoFolder({ auto }) {
+    if (!obra.estadosPagoDriveFolderId) return;
+    if (auto && !isSignedIn()) return;
+    try {
+      const added = await syncEstadosPagoFromDrive(obraId, obra.estadosPagoDriveFolderId, obra.costosDriveFolderId);
+      if (added) {
+        items = await getCostosFacturasByObra(obraId);
+        toast(`📥 ${added} estado(s) de pago nuevo(s) leído(s) desde Drive.`);
+        paint();
+      } else if (!auto) {
+        toast('Ya tenés todo lo más reciente.');
+      }
+    } catch (err) {
+      console.error('Error leyendo la carpeta de estados de pago desde Drive:', err);
+      if (!auto) toast(`⚠️ ${err.message || 'No se pudo conectar con Drive.'}`);
+    }
+  }
+
   function paint() {
     const editing = editingId ? items.find((f) => f.id === editingId) : null;
 
@@ -73,6 +100,15 @@ export async function renderCostosFacturacionView(container, obraId) {
         <span class="header-title">Estados de pago — ${escapeHTML(obra.name)}</span>
       </header>
       <main class="view-content">
+        ${driveLinkSectionHTML({
+          admin,
+          folderId: obra.estadosPagoDriveFolderId,
+          folderName: obra.estadosPagoDriveFolderName,
+          idPrefix: 'ep-',
+          title: '📂 Carpeta "ESTADOS DE PAGO"',
+          hintText: 'Vinculá la carpeta donde vas dejando el Excel de cada EP — cada archivo nuevo se convierte solo en un estado de pago del historial.',
+        })}
+
         <form class="ssma-form" id="fact-form">
           <h2>${editingId ? 'Editar estado de pago' : 'Nuevo estado de pago'}</h2>
 
@@ -80,7 +116,7 @@ export async function renderCostosFacturacionView(container, obraId) {
           <div class="ssma-form-actions">
             <button type="button" class="btn btn-secondary" id="btn-upload-ep">📄 Cargar desde Excel (rellena el formulario)</button>
           </div>
-          <p class="avance-tree-hint">Subí el Excel del contratista y completa los campos solo — revisalos y apretá "Guardar" para dejarlo en el historial.</p>
+          <p class="avance-tree-hint">Subí el Excel del contratista y completa los campos solo — revisalos y apretá "Guardar" para dejarlo en el historial. (También podés vincular la carpeta arriba para que se haga solo.)</p>
 
           <label for="f-tipo">Tipo</label>
           <select id="f-tipo">
@@ -144,6 +180,27 @@ export async function renderCostosFacturacionView(container, obraId) {
     `;
 
     container.querySelector('#btn-back').addEventListener('click', () => navigate(`/costos/obra/${obraId}`));
+
+    wireDriveLinkSection(container, {
+      idPrefix: 'ep-',
+      onLink: async () => {
+        try {
+          const picked = await openFolderPicker();
+          if (!picked) return;
+          await updateObra(obraId, { estadosPagoDriveFolderId: picked.id, estadosPagoDriveFolderName: picked.name });
+          obra.estadosPagoDriveFolderId = picked.id;
+          obra.estadosPagoDriveFolderName = picked.name;
+          uploadObrasIndex();
+          toast(`Carpeta vinculada: "${picked.name}".`);
+          paint();
+          syncEstadosPagoFolder({ auto: false });
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google Drive.');
+        }
+      },
+      onSync: () => syncEstadosPagoFolder({ auto: false }),
+    });
 
     const cancelBtn = container.querySelector('#f-cancel-edit');
     if (cancelBtn) cancelBtn.addEventListener('click', () => { editingId = null; paint(); });
@@ -236,5 +293,8 @@ export async function renderCostosFacturacionView(container, obraId) {
 
   if (obra.costosDriveFolderId) {
     syncFromDrive({ auto: true });
+  }
+  if (obra.estadosPagoDriveFolderId) {
+    syncEstadosPagoFolder({ auto: true });
   }
 }

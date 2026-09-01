@@ -948,7 +948,7 @@ export async function deleteCostosModificacion(id) {
 
 // ---------- Costos: facturación ----------
 
-export async function addCostosFactura({ obraId, tipo, item = '', descripcion = '', numeroFactura = '', fecha, tc = 1, avanceNetoPeriodo = 0, anticipoPeriodo = 0, retencionPeriodo = 0, reajustePeriodo = 0, updatedAt }) {
+export async function addCostosFactura({ obraId, tipo, item = '', descripcion = '', numeroFactura = '', fecha, tc = 1, avanceNetoPeriodo = 0, anticipoPeriodo = 0, retencionPeriodo = 0, reajustePeriodo = 0, sourceFileId = '', sourceFileName = '', updatedAt }) {
   const store = await tx('costosFacturas', 'readwrite');
   const now = Date.now();
   const factura = {
@@ -964,6 +964,10 @@ export async function addCostosFactura({ obraId, tipo, item = '', descripcion = 
     anticipoPeriodo,
     retencionPeriodo,
     reajustePeriodo,
+    // Si vino de la carpeta de Drive vinculada (ver syncEstadosPagoFromDrive
+    // en costosSync.js) — para no volver a importar el mismo archivo.
+    sourceFileId,
+    sourceFileName,
     createdAt: now,
     updatedAt: updatedAt ?? now,
   };

@@ -1,6 +1,6 @@
 import { getObra, updateObra, getCostosContrato, saveCostosContrato, getCostosPresupuestoDetalle, saveCostosPresupuestoDetalle, deleteCostosPresupuestoDetalle } from '../db.js';
 import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
-import { uploadContrato, syncContratoFromDrive } from '../costosSync.js';
+import { uploadContrato, syncContratoFromDrive, syncPresupuestoDetalleFromDrive } from '../costosSync.js';
 import { uploadObrasIndex } from '../obraSync.js';
 import { isAdmin } from '../permissions.js';
 import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
@@ -95,6 +95,24 @@ export async function renderCostosContratoView(container, obraId) {
     }
   }
 
+  async function syncDetalleFromDrive({ auto }) {
+    if (!obra.presupuestoDetalleDriveFolderId) return;
+    if (auto && !isSignedIn()) return;
+    try {
+      const changed = await syncPresupuestoDetalleFromDrive(obraId, obra.presupuestoDetalleDriveFolderId);
+      if (changed) {
+        presupuestoDetalle = await getCostosPresupuestoDetalle(obraId);
+        toast(`📥 Desglose actualizado desde Drive (${presupuestoDetalle.items.length} partidas).`);
+        paint();
+      } else if (!auto) {
+        toast('Ya tenés lo más reciente.');
+      }
+    } catch (err) {
+      console.error('Error sincronizando desglose de presupuesto desde Drive:', err);
+      if (!auto) toast(`⚠️ ${err.message || 'No se pudo conectar con Drive.'}`);
+    }
+  }
+
   function paint() {
     container.innerHTML = `
       <header class="app-header">
@@ -140,10 +158,17 @@ export async function renderCostosContratoView(container, obraId) {
 
         <section class="ssma-form" id="presupuesto-detalle-section">
           <h2>Desglose de partidas (presupuesto original)</h2>
-          <p class="avance-tree-hint">Subí el Excel del contratista con el detalle de partidas (columnas Unidad, Cantidad, P. Unitario y Total) — queda guardado como referencia del presupuesto original, aparte del monto de arriba.</p>
+          ${driveLinkSectionHTML({
+            admin,
+            folderId: obra.presupuestoDetalleDriveFolderId,
+            folderName: obra.presupuestoDetalleDriveFolderName,
+            idPrefix: 'detalle-',
+            hintText: 'Vinculá la carpeta "PRESUPUESTO ORIGINAL" — cada vez que subas ahí un Excel nuevo, la app lo va a detectar sola.',
+          })}
+          <p class="avance-tree-hint">También podés subirlo a mano, sin vincular carpeta:</p>
           <input type="file" id="presupuesto-file-input" accept=".xlsx,.xls" style="display:none" />
           <div class="ssma-form-actions">
-            <button type="button" class="btn btn-secondary" id="btn-upload-presupuesto">📄 Subir desglose (Excel)</button>
+            <button type="button" class="btn btn-secondary" id="btn-upload-presupuesto">📄 Subir desglose a mano (Excel)</button>
             ${presupuestoDetalle ? '<button type="button" class="btn btn-secondary" id="btn-delete-presupuesto">🗑️ Quitar desglose</button>' : ''}
           </div>
           ${renderPresupuestoDetalleHTML()}
@@ -171,6 +196,27 @@ export async function renderCostosContratoView(container, obraId) {
         }
       },
       onSync: () => syncFromDrive({ auto: false }),
+    });
+
+    wireDriveLinkSection(container, {
+      idPrefix: 'detalle-',
+      onLink: async () => {
+        try {
+          const picked = await openFolderPicker();
+          if (!picked) return;
+          await updateObra(obraId, { presupuestoDetalleDriveFolderId: picked.id, presupuestoDetalleDriveFolderName: picked.name });
+          obra.presupuestoDetalleDriveFolderId = picked.id;
+          obra.presupuestoDetalleDriveFolderName = picked.name;
+          uploadObrasIndex();
+          toast(`Carpeta vinculada: "${picked.name}".`);
+          paint();
+          syncDetalleFromDrive({ auto: false });
+        } catch (err) {
+          console.error(err);
+          toast('No se pudo conectar con Google Drive.');
+        }
+      },
+      onSync: () => syncDetalleFromDrive({ auto: false }),
     });
 
     container.querySelector('#c-presupuesto').value = contrato?.presupuestoOficial ?? '';
@@ -248,5 +294,8 @@ export async function renderCostosContratoView(container, obraId) {
 
   if (obra.costosDriveFolderId) {
     syncFromDrive({ auto: true });
+  }
+  if (obra.presupuestoDetalleDriveFolderId) {
+    syncDetalleFromDrive({ auto: true });
   }
 }

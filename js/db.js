@@ -857,13 +857,18 @@ export async function getCostosPresupuestoDetalle(obraId) {
 /** Reemplaza entero el desglose de partidas de una obra (upsert por `obraId`,
  * igual que costosContrato). `items`: [{categoria, item, descripcion, unidad,
  * cantidad, precioUnitario, total}]. */
-export async function saveCostosPresupuestoDetalle({ obraId, items = [], grandTotal = 0, sourceFileName = '', updatedAt }) {
+export async function saveCostosPresupuestoDetalle({ obraId, items = [], grandTotal = 0, sourceFileName = '', sourceFileId = '', sourceModifiedTime = '', updatedAt }) {
   const store = await tx('costosPresupuestoDetalle', 'readwrite');
   const detalle = {
     obraId,
     items,
     grandTotal,
     sourceFileName,
+    // Guardados para saber si el archivo de Drive cambió sin tener que
+    // volver a descargarlo y parsearlo entero cada vez (mismo chequeo que
+    // controlSync.js hace con el snapshot de programación más reciente).
+    sourceFileId,
+    sourceModifiedTime,
     updatedAt: updatedAt ?? Date.now(),
   };
   await wrap(store.put(detalle));

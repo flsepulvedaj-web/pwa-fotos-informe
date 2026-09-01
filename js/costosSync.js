@@ -9,10 +9,13 @@
 // registro (mismo patrón que Personal/Checklist en `controlSync.js`):
 // "gana" el que tenga `updatedAt` más nuevo adentro, no el que llegó último
 // a Drive.
-import { listDriveJSONFiles, downloadDriveFile, uploadJSON, findFileByName, updateFileContent, uploadFile } from './googleDrive.js';
+import { listDriveJSONFiles, listDriveScheduleFiles, downloadDriveFile, uploadJSON, findFileByName, updateFileContent, uploadFile } from './googleDrive.js';
+import { parsePresupuestoDetalleXLSX } from './costosPresupuestoParser.js';
 import {
   getCostosContrato,
   saveCostosContrato,
+  getCostosPresupuestoDetalle,
+  saveCostosPresupuestoDetalle,
   getCostosModificacionesByObra,
   upsertCostosModificacion,
   getCostosFacturasByObra,
@@ -63,6 +66,35 @@ export async function syncContratoFromDrive(obraId, folderId) {
     console.error('No se pudo traer el contrato desde Drive:', err);
     return false;
   }
+}
+
+// ---------- Presupuesto original detallado (1 Excel, se reemplaza) ----------
+
+/** A diferencia del contrato (que la app misma edita y sube), el desglose
+ * de partidas siempre viene de un Excel que el contratista arma — acá solo
+ * se lee desde Drive, nunca se sube de vuelta. Se usa el archivo .xlsx más
+ * reciente de la carpeta (mismo criterio que Avance con la programación). */
+export async function syncPresupuestoDetalleFromDrive(obraId, folderId) {
+  if (!folderId) return false;
+  const files = (await listDriveScheduleFiles(folderId)).filter((f) => /\.xlsx?$/i.test(f.name));
+  if (!files.length) return false;
+  const newest = files[0]; // listDriveScheduleFiles ya ordena por modifiedTime desc
+  const local = await getCostosPresupuestoDetalle(obraId);
+  if (local && local.sourceFileId === newest.id && local.sourceModifiedTime === newest.modifiedTime) {
+    return false; // mismo archivo, sin cambios
+  }
+  const blob = await downloadDriveFile(newest.id);
+  const buffer = await blob.arrayBuffer();
+  const { items, grandTotal } = parsePresupuestoDetalleXLSX(buffer);
+  await saveCostosPresupuestoDetalle({
+    obraId,
+    items,
+    grandTotal,
+    sourceFileName: newest.name,
+    sourceFileId: newest.id,
+    sourceModifiedTime: newest.modifiedTime,
+  });
+  return true;
 }
 
 // ---------- Modificaciones ----------

@@ -833,6 +833,18 @@ export async function deleteChecklistPhoto(id) {
   await wrap(store.delete(id));
 }
 
+/** Marca una foto local como ya subida a Drive — para las que se sacaron
+ * antes de que existiera la sincronización de fotos (ver el "backfill" en
+ * controlChecklistView.js), o si alguna vez falló la subida y se reintenta. */
+export async function markChecklistPhotoUploaded(id, driveFileId) {
+  const store = await tx('controlChecklistPhotos', 'readwrite');
+  const photo = await wrap(store.get(id));
+  if (!photo) return null;
+  photo.driveFileId = driveFileId;
+  await wrap(store.put(photo));
+  return photo;
+}
+
 // ---------- Costos: contrato (config, 1 registro por obra) ----------
 
 export async function getCostosContrato(obraId) {

@@ -12,6 +12,7 @@ import {
   getChecklistPhotosByEntry,
   addChecklistPhoto,
   deleteChecklistPhoto,
+  markChecklistPhotoUploaded,
 } from '../db.js';
 import { DEFAULT_CHECKLIST_TYPES, CHECKLIST_STATUS } from '../controlChecklistTemplates.js';
 import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
@@ -93,6 +94,26 @@ export async function renderControlChecklistView(container, obraId) {
     await loadEntryForDate(todayLocalISO());
   }
 
+  /** Fotos que se sacaron antes de que existiera la sincronización (o que
+   * fallaron al subir en su momento) — nunca tuvieron `driveFileId`, así
+   * que se suben ahora solas, en segundo plano, sin bloquear la pantalla.
+   * Best-effort: si falla, se reintenta la próxima vez que se abra este día. */
+  function backfillUnuploadedPhotos(type, date, entryId, photosList) {
+    if (!obra.checklistDriveFolderId || !isSignedIn()) return;
+    const pending = photosList.filter((p) => !p.driveFileId);
+    if (!pending.length) return;
+    (async () => {
+      for (const photo of pending) {
+        try {
+          const ok = await uploadChecklistPhoto(obra.checklistDriveFolderId, type.title, date, photo);
+          if (ok) await markChecklistPhotoUploaded(photo.id, 'uploaded'); // el id real de Drive no hace falta acá — con marcarla alcanza para no reintentarla
+        } catch (err) {
+          console.error('No se pudo subir una foto vieja del checklist:', err);
+        }
+      }
+    })();
+  }
+
   async function loadEntryForDate(date) {
     const type = activeType();
     let e = await getChecklistEntryByTypeAndDate(type.id, date);
@@ -102,6 +123,7 @@ export async function renderControlChecklistView(container, obraId) {
     }
     entry = e;
     photos = await getChecklistPhotosByEntry(e.id);
+    backfillUnuploadedPhotos(type, date, e.id, photos);
   }
 
   entries = await getChecklistEntriesByType(activeTypeId);

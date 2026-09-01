@@ -170,6 +170,7 @@ export async function syncEstadosPagoFromDrive(obraId, folderId, propagateFolder
         avanceNetoPeriodo: parsed.avanceNetoPeriodo,
         anticipoPeriodo: parsed.anticipoPeriodo,
         retencionPeriodo: parsed.retencionPeriodo,
+        items: parsed.items,
         sourceFileId: file.id,
         sourceFileName: file.name,
       });

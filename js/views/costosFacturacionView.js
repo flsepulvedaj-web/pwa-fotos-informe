@@ -50,6 +50,52 @@ export async function renderCostosFacturacionView(container, obraId) {
   const admin = isAdmin(await getSignedInEmail());
   let items = await getCostosFacturasByObra(obraId);
   let editingId = null;
+  // Desglose de partidas del período (hoja DETALLE del Excel) del EP que se
+  // está por guardar — solo lo llena la carga por Excel, no hay forma de
+  // escribirlo a mano. Se muestra en el historial una vez guardado.
+  let pendingPartidas = [];
+
+  function renderPartidasHTML(partidas) {
+    if (!partidas?.length) return '';
+    const groups = new Map();
+    for (const it of partidas) {
+      const key = it.categoria || '—';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(it);
+    }
+    const groupsHTML = [...groups.entries()]
+      .map(([cat, its]) => {
+        const catTotal = its.reduce((s, i) => s + i.totalActual, 0);
+        return `
+        <details class="presupuesto-cat">
+          <summary>Categoría ${escapeHTML(cat)} — ${formatMonto(catTotal)} (${its.length} partida${its.length === 1 ? '' : 's'})</summary>
+          <div class="avance-table-wrap">
+            <table class="avance-table">
+              <thead><tr><th>Ítem</th><th>Descripción</th><th>Unidad</th><th>% avance período</th><th>Total período</th></tr></thead>
+              <tbody>${its
+                .map(
+                  (i) => `
+                <tr>
+                  <td>${escapeHTML(i.item)}</td>
+                  <td>${escapeHTML(i.descripcion)}</td>
+                  <td>${escapeHTML(i.unidad)}</td>
+                  <td>${i.avanceActualPercent}%</td>
+                  <td>${formatMonto(i.totalActual)}</td>
+                </tr>`
+                )
+                .join('')}</tbody>
+            </table>
+          </div>
+        </details>`;
+      })
+      .join('');
+    return `
+      <details class="ssma-history-detail">
+        <summary>📋 Ver desglose por partida (${partidas.length})</summary>
+        ${groupsHTML}
+      </details>
+    `;
+  }
 
   async function syncFromDrive({ auto }) {
     if (!obra.costosDriveFolderId) return;
@@ -169,6 +215,7 @@ export async function renderCostosFacturacionView(container, obraId) {
                 </button>
                 <button type="button" class="icon-btn ssma-delete-btn" data-delete-id="${f.id}" title="Eliminar">🗑️</button>
               </div>
+              ${renderPartidasHTML(f.items)}
             `).join('')}
           </section>
         ` : `
@@ -203,7 +250,7 @@ export async function renderCostosFacturacionView(container, obraId) {
     });
 
     const cancelBtn = container.querySelector('#f-cancel-edit');
-    if (cancelBtn) cancelBtn.addEventListener('click', () => { editingId = null; paint(); });
+    if (cancelBtn) cancelBtn.addEventListener('click', () => { editingId = null; pendingPartidas = []; paint(); });
 
     const epFileInput = container.querySelector('#ep-file-input');
     container.querySelector('#btn-upload-ep').addEventListener('click', () => epFileInput.click());
@@ -220,7 +267,8 @@ export async function renderCostosFacturacionView(container, obraId) {
         container.querySelector('#f-avance').value = parsed.avanceNetoPeriodo;
         container.querySelector('#f-anticipo').value = parsed.anticipoPeriodo;
         container.querySelector('#f-retencion').value = parsed.retencionPeriodo;
-        toast(`Formulario completado desde "${file.name}" (hoja "${parsed.sheetUsed}") — revisá y guardá.`);
+        pendingPartidas = parsed.items;
+        toast(`Formulario completado desde "${file.name}" (${parsed.items.length} partidas del período) — revisá y guardá.`);
       } catch (err) {
         console.error('Error leyendo estado de pago:', err);
         toast(`⚠️ ${err.message || 'No se pudo leer el archivo.'}`);
@@ -241,6 +289,7 @@ export async function renderCostosFacturacionView(container, obraId) {
         anticipoPeriodo: num('#f-anticipo'),
         retencionPeriodo: num('#f-retencion'),
         reajustePeriodo: num('#f-reajuste'),
+        items: pendingPartidas,
       };
 
       if (!fields.fecha) {
@@ -257,6 +306,7 @@ export async function renderCostosFacturacionView(container, obraId) {
         saved = await addCostosFactura({ obraId, ...fields });
         toast('Estado de pago guardado.');
       }
+      pendingPartidas = [];
 
       if (obra.costosDriveFolderId) {
         const ok = await uploadFactura(obra.costosDriveFolderId, saved);
@@ -270,6 +320,9 @@ export async function renderCostosFacturacionView(container, obraId) {
     container.querySelectorAll('.ssma-history-main').forEach((btn) => {
       btn.addEventListener('click', () => {
         editingId = btn.dataset.editId;
+        // Sin esto, guardar una edición manual (sin volver a subir el Excel)
+        // borraría el desglose de partidas que ya tenía este EP.
+        pendingPartidas = items.find((f) => f.id === editingId)?.items || [];
         paint();
         container.querySelector('#fact-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
       });

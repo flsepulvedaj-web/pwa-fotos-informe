@@ -4,6 +4,7 @@ import {
   getCostosModificacionesByObra,
   getCostosFacturasByObra,
   getCostosReembolsosByObra,
+  getScheduleSnapshotsByObra,
 } from '../db.js';
 import {
   computePresupuestoVigente,
@@ -13,6 +14,7 @@ import {
   computeReembolsosPendientes,
   formatMonto,
 } from '../costosDashboard.js';
+import { computeAvanceKPI } from '../controlDashboard.js';
 import { isSignedIn } from '../googleDrive.js';
 import {
   syncContratoFromDrive,
@@ -49,13 +51,14 @@ export async function renderCostosObraView(container, obraId) {
   ];
 
   async function loadData() {
-    const [contrato, modificaciones, facturas, reembolsos] = await Promise.all([
+    const [contrato, modificaciones, facturas, reembolsos, scheduleSnapshots] = await Promise.all([
       getCostosContrato(obraId),
       getCostosModificacionesByObra(obraId),
       getCostosFacturasByObra(obraId),
       getCostosReembolsosByObra(obraId),
+      getScheduleSnapshotsByObra(obraId), // del módulo Control — solo para el cruce de abajo
     ]);
-    return { contrato, modificaciones, facturas, reembolsos };
+    return { contrato, modificaciones, facturas, reembolsos, scheduleSnapshots };
   }
 
   let data = await loadData();
@@ -67,6 +70,13 @@ export async function renderCostosObraView(container, obraId) {
     const avancePercent = computeAvanceFinancieroPercent(totalFacturado, presupuestoVigente);
     const modPendientes = computeModificacionesPendientes(data.modificaciones);
     const reembolsosPendientes = computeReembolsosPendientes(data.reembolsos);
+
+    // Cruce con Control: el % cobrado (Estados de pago) nunca debería
+    // superar el % realmente avanzado en terreno (Carta Gantt) — no se
+    // puede hacer partida por partida (los ítems del EP no calzan con las
+    // tareas de la programación), así que se compara a nivel general.
+    const avanceFisico = computeAvanceKPI(data.scheduleSnapshots).latestPercent;
+    const sobrefacturado = avancePercent !== null && avanceFisico !== null && avancePercent > avanceFisico;
 
     container.innerHTML = `
       <header class="app-header">
@@ -84,10 +94,27 @@ export async function renderCostosObraView(container, obraId) {
             <div class="kpi-label">Facturado acumulado</div>
           </div>
           <div class="kpi-tile">
-            <div class="kpi-value">${avancePercent !== null ? avancePercent + '%' : '—'}</div>
+            <div class="kpi-value ${sobrefacturado ? 'kpi-value-danger' : ''}">${avancePercent !== null ? avancePercent + '%' : '—'}</div>
             <div class="kpi-label">Avance financiero</div>
           </div>
+          <div class="kpi-tile">
+            <div class="kpi-value">${avanceFisico !== null ? avanceFisico + '%' : '—'}</div>
+            <div class="kpi-label">Avance físico (Control)</div>
+          </div>
         </section>
+
+        ${sobrefacturado ? `
+          <div class="incumplimientos-panel">
+            <div class="incumplimiento-row">
+              <div class="incumplimiento-main">
+                <span class="incumplimiento-tag">⚠️ Sobre-facturación</span>
+                <span class="incumplimiento-label">Cobraste ${avancePercent}% pero en terreno vas ${avanceFisico}%</span>
+                <span class="incumplimiento-meta">Revisá el último Estado de pago contra la Carta Gantt</span>
+              </div>
+              <button type="button" class="btn btn-secondary" data-goto="facturacion">Revisar</button>
+            </div>
+          </div>
+        ` : ''}
 
         ${modPendientes.cantidad || reembolsosPendientes.cantidad ? `
           <section class="incumplimientos-panel">

@@ -15,7 +15,7 @@ import {
 } from '../db.js';
 import { DEFAULT_CHECKLIST_TYPES, CHECKLIST_STATUS } from '../controlChecklistTemplates.js';
 import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
-import { uploadChecklistEntry, syncChecklistFromDrive } from '../controlSync.js';
+import { uploadChecklistEntry, syncChecklistFromDrive, uploadChecklistPhoto, syncChecklistPhotosFromDrive } from '../controlSync.js';
 import { uploadObrasIndex } from '../obraSync.js';
 import { isAdmin } from '../permissions.js';
 import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
@@ -112,11 +112,20 @@ export async function renderControlChecklistView(container, obraId) {
     // La sync automática nunca dispara el popup de sesión de Google.
     if (auto && !isSignedIn()) return;
     try {
+      // Primero los checklists (JSON, livianos) y recién después las fotos:
+      // syncChecklistPhotosFromDrive necesita que el checklist del día ya
+      // exista localmente para poder engancharle la foto — si un día
+      // llegara a faltar (poco probable, el JSON es rapidísimo), esa foto
+      // queda para la próxima sincronización, no se pierde.
       const changed = await syncChecklistFromDrive(obraId, obra.checklistDriveFolderId);
-      if (changed) {
+      const newPhotos = await syncChecklistPhotosFromDrive(obraId, obra.checklistDriveFolderId);
+      if (changed || newPhotos) {
         entries = await getChecklistEntriesByType(activeTypeId);
         await loadEntryForDate(entry.date);
-        toast(`📥 ${changed} checklist(s) traído(s) de Drive.`);
+        const parts = [];
+        if (changed) parts.push(`${changed} checklist(s)`);
+        if (newPhotos) parts.push(`${newPhotos} foto(s)`);
+        toast(`📥 ${parts.join(' y ')} traído(s) de Drive.`);
         paint();
       } else if (!auto) {
         toast('Ya tenés todo lo más reciente.');
@@ -344,7 +353,11 @@ export async function renderControlChecklistView(container, obraId) {
       for (const file of files) {
         try {
           const blob = await downscaleImageBlob(file);
-          await addChecklistPhoto({ checklistId: entry.id, blob });
+          const photo = await addChecklistPhoto({ checklistId: entry.id, blob });
+          if (obra.checklistDriveFolderId) {
+            const ok = await uploadChecklistPhoto(obra.checklistDriveFolderId, type.title, entry.date, photo);
+            if (!ok) toast('⚠️ Una foto no se pudo subir a Drive (quedó guardada en tu teléfono, se reintenta después).');
+          }
           added++;
         } catch (err) {
           console.error('Error agregando foto al checklist:', err);

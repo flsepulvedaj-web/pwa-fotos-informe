@@ -9,7 +9,7 @@
 // el que tenga el "updatedAt" más nuevo adentro, no el que se subió último
 // a Drive — evita pisar un cambio más nuevo con uno viejo que tardó en
 // subir por mala señal.
-import { listDriveJSONFiles, listDriveScheduleFiles, downloadDriveFile, uploadJSON } from './googleDrive.js';
+import { listDriveJSONFiles, listDriveScheduleFiles, listDriveFiles, listDriveFolders, findOrCreateDriveFolder, downloadDriveFile, uploadFile, uploadJSON } from './googleDrive.js';
 import { DEFAULT_CHECKLIST_TYPES } from './controlChecklistTemplates.js';
 import {
   getSSMAEntryByObraAndDate,
@@ -21,6 +21,8 @@ import {
   getChecklistEntryByTypeAndDate,
   addChecklistEntry,
   updateChecklistEntry,
+  getChecklistPhotosByEntry,
+  addChecklistPhoto,
   addScheduleSnapshot,
   getScheduleSnapshotsByObra,
 } from './db.js';
@@ -209,4 +211,87 @@ export async function syncChecklistFromDrive(obraId, folderId) {
     }
   }
   return changed;
+}
+
+/**
+ * Sube (best-effort) una foto del checklist a Drive, ORDENADA en
+ * subcarpetas Tipo → Fecha (ej. "SSMA/2026-09-01/") dentro de la carpeta de
+ * Checklist vinculada — así queda prolijo para mirar directo en Drive, sin
+ * que Pancho tenga que ordenar nada a mano. `typeTitle` es el nombre lindo
+ * del tipo (ej. "SSMA"), no la `key` interna.
+ */
+export async function uploadChecklistPhoto(folderId, typeTitle, date, photo) {
+  if (!folderId) return false;
+  try {
+    const typeFolder = await findOrCreateDriveFolder(folderId, typeTitle);
+    const dateFolder = await findOrCreateDriveFolder(typeFolder.id, date);
+    await uploadFile(dateFolder.id, photo.blob, `foto_${photo.id}.jpg`);
+    return true;
+  } catch (err) {
+    console.error('No se pudo subir la foto del checklist a Drive:', err);
+    return false;
+  }
+}
+
+/**
+ * Trae de Drive las fotos de checklist que todavía no están en este
+ * teléfono, recorriendo la misma estructura Tipo → Fecha que arma
+ * `uploadChecklistPhoto` — el tipo se resuelve por el NOMBRE de la
+ * subcarpeta (case-insensitive, contra `type.title`) y la fecha por el
+ * nombre de la subcarpeta siguiente (debe verse como "2026-09-01"). Se
+ * identifican por el id de Drive del archivo (guardado como `driveFileId`
+ * en cada foto local) — nunca se vuelve a bajar la misma.
+ */
+export async function syncChecklistPhotosFromDrive(obraId, folderId) {
+  if (!folderId) return 0;
+  let types = await getChecklistTypesByObra(obraId);
+  if (!types.length) {
+    types = await Promise.all(DEFAULT_CHECKLIST_TYPES.map((t, i) => createChecklistType({ obraId, order: i, ...t })));
+  }
+
+  const typeFolders = await listDriveFolders(folderId);
+
+  // Cachea las fotos ya bajadas por checklist local, para no volver a
+  // consultar la base de datos por cada archivo.
+  const knownDriveIdsByChecklist = new Map();
+  async function alreadyHas(checklistId, fileId) {
+    if (!knownDriveIdsByChecklist.has(checklistId)) {
+      const local = await getChecklistPhotosByEntry(checklistId);
+      knownDriveIdsByChecklist.set(checklistId, new Set(local.map((p) => p.driveFileId).filter(Boolean)));
+    }
+    return knownDriveIdsByChecklist.get(checklistId).has(fileId);
+  }
+
+  let added = 0;
+  for (const typeFolder of typeFolders) {
+    const type = types.find((t) => t.title.trim().toLowerCase() === typeFolder.name.trim().toLowerCase());
+    if (!type) continue; // subcarpeta que no corresponde a ningún tipo conocido
+
+    const dateFolders = await listDriveFolders(typeFolder.id);
+    for (const dateFolder of dateFolders) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFolder.name)) continue;
+      const entry = await getChecklistEntryByTypeAndDate(type.id, dateFolder.name);
+      if (!entry) continue; // todavía no llegó el checklist de ese día — se resuelve en un próximo sync
+
+      const files = await listDriveFiles(dateFolder.id); // ya filtra por mimeType imagen
+      for (const file of files) {
+        if (await alreadyHas(entry.id, file.id)) continue;
+        try {
+          const blob = await downloadDriveFile(file.id);
+          await addChecklistPhoto({
+            id: `photo-drive-${file.id}`, // determinístico — evita duplicar si se dispara 2 veces
+            checklistId: entry.id,
+            blob,
+            driveFileId: file.id,
+          });
+          knownDriveIdsByChecklist.get(entry.id).add(file.id);
+          added++;
+        } catch (err) {
+          if (err?.name === 'ConstraintError') continue; // ya la había bajado otra corrida en paralelo
+          console.error(`No se pudo bajar la foto "${file.name}" de Drive:`, err);
+        }
+      }
+    }
+  }
+  return added;
 }

@@ -802,9 +802,21 @@ export async function deleteChecklistEntry(id) {
   await wrap(store.delete(id));
 }
 
-export async function addChecklistPhoto({ checklistId, blob }) {
+export async function addChecklistPhoto({ id, checklistId, blob, driveFileId = '', createdAt }) {
   const store = await tx('controlChecklistPhotos', 'readwrite');
-  const photo = { id: uuid(), checklistId, blob, createdAt: Date.now() };
+  const photo = {
+    // Id fijo opcional (mismo truco que costosFacturas): las que vienen de
+    // Drive usan un id derivado del archivo, así una sincronización que se
+    // dispara 2 veces no puede duplicar la misma foto (store.add() choca
+    // con ConstraintError la segunda vez).
+    id: id || uuid(),
+    checklistId,
+    blob,
+    // Si vino de Drive (ver syncChecklistPhotosFromDrive en controlSync.js)
+    // — para no volver a bajar la misma foto de nuevo.
+    driveFileId,
+    createdAt: createdAt ?? Date.now(),
+  };
   await wrap(store.add(photo));
   return photo;
 }

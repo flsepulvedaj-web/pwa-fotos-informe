@@ -1,6 +1,6 @@
 import { getAllObras, createObra } from '../db.js';
 import { isSignedIn, getSignedInEmail } from '../googleDrive.js';
-import { isAdmin } from '../permissions.js';
+import { isAdmin, obrasForEmail, fetchPermissions, getCachedPermissions } from '../permissions.js';
 import { syncObrasFromDrive, uploadObrasIndex, deleteObraEverywhere } from '../obraSync.js';
 import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
@@ -16,9 +16,18 @@ import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
  * cualquiera del equipo le llega al resto.
  */
 export async function renderControlHomeView(container) {
-  let obras = await getAllObras();
   const email = await getSignedInEmail();
   const admin = isAdmin(email);
+
+  // Filtra por obras asignadas a este correo (además del filtro por módulo
+  // que ya pasó en Home) — un correo sin lista propia todavía ve todas
+  // (ver obrasForEmail), así nadie pierde acceso de golpe al desplegar esto.
+  function applyObraPermissions(all, permissions) {
+    const allowedIds = obrasForEmail(email, permissions, all.map((o) => o.id));
+    return all.filter((o) => allowedIds.includes(o.id));
+  }
+
+  let obras = applyObraPermissions(await getAllObras(), getCachedPermissions());
 
   function paint() {
     container.innerHTML = `
@@ -64,7 +73,7 @@ export async function renderControlHomeView(container) {
         if (!ok) return;
         toast('Eliminando…');
         await deleteObraEverywhere(btn.dataset.deleteObraId);
-        obras = await getAllObras();
+        obras = applyObraPermissions(await getAllObras(), getCachedPermissions());
         toast('Obra eliminada — se va a propagar al resto del equipo.');
         paint();
       });
@@ -79,7 +88,7 @@ export async function renderControlHomeView(container) {
       if (result && result.name) {
         await createObra(result.name);
         toast('Obra creada.');
-        obras = await getAllObras();
+        obras = applyObraPermissions(await getAllObras(), getCachedPermissions());
         paint();
         uploadObrasIndex(); // best-effort, no bloquea — le llega al resto del equipo
       }
@@ -88,11 +97,18 @@ export async function renderControlHomeView(container) {
 
   paint();
 
+  // Refresca los permisos en segundo plano (por si Pancho te sacó/dio
+  // acceso a una obra hace poco) — mismo patrón que homeView.js.
+  fetchPermissions().then(async (fresh) => {
+    obras = applyObraPermissions(await getAllObras(), fresh);
+    paint();
+  }).catch((err) => console.error('Error refrescando permisos:', err));
+
   // Sync en segundo plano — nunca dispara el popup de sesión de Google.
   if (isSignedIn()) {
     syncObrasFromDrive().then(async (changed) => {
       if (changed) {
-        obras = await getAllObras();
+        obras = applyObraPermissions(await getAllObras(), getCachedPermissions());
         toast(`📥 ${changed} obra(s) traída(s) del equipo.`);
         paint();
       }

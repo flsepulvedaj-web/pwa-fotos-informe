@@ -83,6 +83,23 @@ export function modulesForEmail(email, permissions) {
   return permissions?.[email]?.modules || [];
 }
 
+/**
+ * Obras que puede ver un correo, filtrando la lista completa (`allObraIds`,
+ * ej. `getAllObras().map(o => o.id)`). El admin ve todas siempre. Para el
+ * resto: si nunca se le configuró una lista de obras (`obras === undefined`
+ * — no confundir con `[]`), ve todas por ahora — así nadie pierde acceso de
+ * golpe el día que se activa esta función, hasta que Pancho restrinja algo
+ * a mano en /usuarios. En cuanto tiene una lista (aunque esté vacía), solo
+ * ve las que estén ahí — mismo espíritu "todo/nada explícito" que
+ * `modulesForEmail`.
+ */
+export function obrasForEmail(email, permissions, allObraIds) {
+  if (isAdmin(email)) return allObraIds;
+  const list = permissions?.[email]?.obras;
+  if (list === undefined) return allObraIds;
+  return allObraIds.filter((id) => list.includes(id));
+}
+
 /** Guarda el objeto de permisos completo en Drive (solo admin debería
  * llamar esto — la pantalla de administración ya restringe el acceso). */
 export async function savePermissions(data) {

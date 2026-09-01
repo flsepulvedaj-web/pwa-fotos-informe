@@ -1,5 +1,6 @@
 import { getSignedInEmail } from '../googleDrive.js';
 import { APP_MODULES, isAdmin, fetchPermissions, savePermissions } from '../permissions.js';
+import { getAllObras } from '../db.js';
 import { navigate } from '../router.js';
 import { escapeHTML, promptDialog, confirmDialog, toast } from '../utils.js';
 
@@ -17,6 +18,8 @@ export async function renderPermissionsAdminView(container) {
   }
 
   let permissions = await fetchPermissions();
+  const obras = await getAllObras();
+  const allObraIds = obras.map((o) => o.id);
   let saveTimer = null;
 
   function scheduleSave() {
@@ -58,6 +61,23 @@ export async function renderPermissionsAdminView(container) {
                     </label>
                   `).join('')}
                 </div>
+                ${obras.length ? `
+                  <div class="permissions-obras-label">Obras que puede ver</div>
+                  <div class="permissions-checks">
+                    ${obras.map((o) => {
+                      // Sin lista propia todavía = ve todas (ver obrasForEmail en
+                      // permissions.js) — se muestra así (todo tildado) para que
+                      // lo que ve acá coincida con lo que ve en la app.
+                      const userObras = permissions[e]?.obras ?? allObraIds;
+                      return `
+                        <label class="permissions-check">
+                          <input type="checkbox" data-email="${escapeHTML(e)}" data-obra="${o.id}" ${userObras.includes(o.id) ? 'checked' : ''} />
+                          ${escapeHTML(o.name)}
+                        </label>
+                      `;
+                    }).join('')}
+                  </div>
+                ` : ''}
               </div>
             `).join('')}
           </section>
@@ -70,7 +90,7 @@ export async function renderPermissionsAdminView(container) {
 
     container.querySelector('#btn-back').addEventListener('click', () => navigate('/'));
 
-    container.querySelectorAll('input[type=checkbox]').forEach((cb) => {
+    container.querySelectorAll('input[type=checkbox][data-module]').forEach((cb) => {
       cb.addEventListener('change', () => {
         const e = cb.dataset.email;
         const m = cb.dataset.module;
@@ -79,6 +99,22 @@ export async function renderPermissionsAdminView(container) {
         if (cb.checked) set.add(m);
         else set.delete(m);
         permissions[e].modules = [...set];
+        scheduleSave();
+      });
+    });
+
+    container.querySelectorAll('input[type=checkbox][data-obra]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const e = cb.dataset.email;
+        const obraId = cb.dataset.obra;
+        if (!permissions[e]) permissions[e] = { modules: [] };
+        // Primera vez que se toca esta lista para este correo: arranca desde
+        // "todas" (mismo estado que ya mostraban los tildes) en vez de desde
+        // cero — así destildar una sola obra no le saca de golpe el resto.
+        const current = new Set(permissions[e].obras ?? allObraIds);
+        if (cb.checked) current.add(obraId);
+        else current.delete(obraId);
+        permissions[e].obras = [...current];
         scheduleSave();
       });
     });

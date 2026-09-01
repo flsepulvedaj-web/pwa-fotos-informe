@@ -2600,6 +2600,13 @@ button {
   color: var(--color-text);
 }
 
+.permissions-obras-label {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
 .permissions-remove-btn {
   flex-shrink: 0;
   width: 32px;

@@ -9,7 +9,7 @@ import {
   clearProtocolsRootFolder,
   openFolderPicker,
 } from '../googleDrive.js';
-import { isAdmin } from '../permissions.js';
+import { isAdmin, obrasForEmail, fetchPermissions, getCachedPermissions } from '../permissions.js';
 
 /**
  * Pantalla de inicio del módulo Protocolos: lista de obras. Cada obra
@@ -17,8 +17,20 @@ import { isAdmin } from '../permissions.js';
  * fotos del otro módulo).
  */
 export async function renderProtocolHomeView(container) {
-  const obras = await getAllObras();
-  const isDriveAdmin = isAdmin(await getSignedInEmail());
+  const email = await getSignedInEmail();
+  const isDriveAdmin = isAdmin(email);
+  const allObras = await getAllObras();
+  const allowedIds = obrasForEmail(email, getCachedPermissions(), allObras.map((o) => o.id));
+  const obras = allObras.filter((o) => allowedIds.includes(o.id));
+
+  // Refresca los permisos en segundo plano (por si Pancho te sacó/dio
+  // acceso a una obra hace poco) — mismo patrón que homeView.js/Control.
+  fetchPermissions().then((fresh) => {
+    const freshIds = obrasForEmail(email, fresh, allObras.map((o) => o.id));
+    if (JSON.stringify([...freshIds].sort()) !== JSON.stringify([...allowedIds].sort())) {
+      renderProtocolHomeView(container);
+    }
+  }).catch((err) => console.error('Error refrescando permisos:', err));
 
   container.innerHTML = `
     <header class="app-header">

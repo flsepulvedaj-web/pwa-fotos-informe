@@ -1,5 +1,6 @@
 import { getObra, updateObra, addScheduleSnapshot, getScheduleSnapshotsByObraAndType, deleteScheduleSnapshot } from '../db.js';
 import { parseScheduleCSV, parseScheduleXLSX, buildTaskTree } from '../controlScheduleParser.js';
+import { renderGanttChartHTML } from '../ganttChart.js';
 import { openFolderPicker, isSignedIn, signIn, getSignedInEmail } from '../googleDrive.js';
 import { syncAvanceFromDrive } from '../controlSync.js';
 import { parseMPPViaBackend, isMppBackendConfigured } from '../mppBackend.js';
@@ -139,6 +140,7 @@ export async function renderControlAvanceView(container, obraId) {
   let tree = [];
   let collapsedSet = new Set();
   let treeBuiltForId = null; // evita reconstruir (y resetear los ▶/▼ abiertos) en cada repintado
+  let viewMode = 'tabla'; // 'tabla' | 'gantt'
 
   function ensureTreeForSelection() {
     if (treeBuiltForId === selectedSnapshotId) return;
@@ -279,17 +281,27 @@ export async function renderControlAvanceView(container, obraId) {
             <button type="button" class="icon-btn" id="btn-delete-snapshot" title="Eliminar esta programación">🗑️</button>
           </div>
 
-          <p class="avance-tree-hint">Negrita = partida principal (agrupa las tareas de abajo). Tocá ▶ para abrir el detalle.</p>
-          <div class="avance-table-wrap">
-            <table class="avance-table">
-              <thead>
-                <tr><th>Tarea</th><th>Inicio</th><th>Fin</th><th>%</th></tr>
-              </thead>
-              <tbody>
-                ${renderTaskTreeRows(tree, 0, collapsedSet)}
-              </tbody>
-            </table>
+          <div class="ssma-form-actions">
+            <button type="button" class="btn btn-secondary" id="btn-view-tabla" ${viewMode === 'tabla' ? 'disabled' : ''}>📋 Tabla</button>
+            <button type="button" class="btn btn-secondary" id="btn-view-gantt" ${viewMode === 'gantt' ? 'disabled' : ''}>📊 Carta Gantt</button>
           </div>
+
+          ${viewMode === 'tabla' ? `
+            <p class="avance-tree-hint">Negrita = partida principal (agrupa las tareas de abajo). Tocá ▶ para abrir el detalle.</p>
+            <div class="avance-table-wrap">
+              <table class="avance-table">
+                <thead>
+                  <tr><th>Tarea</th><th>Inicio</th><th>Fin</th><th>%</th></tr>
+                </thead>
+                <tbody>
+                  ${renderTaskTreeRows(tree, 0, collapsedSet)}
+                </tbody>
+              </table>
+            </div>
+          ` : (() => {
+            const ganttHTML = renderGanttChartHTML(tree, collapsedSet);
+            return ganttHTML || '<div class="empty-state"><p>Ninguna tarea visible tiene fecha de inicio y fin para graficar.</p></div>';
+          })()}
         ` : `
           <div class="empty-state">
             <p>Todavía no has subido ninguna programación Física Real.</p>
@@ -358,6 +370,9 @@ export async function renderControlAvanceView(container, obraId) {
       proyectadaInput.value = '';
       if (file) await handleFileUpload(file, 'proyectada');
     });
+
+    container.querySelector('#btn-view-tabla')?.addEventListener('click', () => { viewMode = 'tabla'; paint(); });
+    container.querySelector('#btn-view-gantt')?.addEventListener('click', () => { viewMode = 'gantt'; paint(); });
 
     container.querySelector('#avance-snapshot-select')?.addEventListener('change', (e) => {
       selectedSnapshotId = e.target.value;

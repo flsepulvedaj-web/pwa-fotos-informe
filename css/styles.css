@@ -2296,6 +2296,130 @@ button {
   font-family: inherit;
 }
 
+/* Carta Gantt (js/ganttChart.js) — columna de etiquetas fija a la
+   izquierda + área de barras con scroll horizontal propio a la derecha; el
+   scroll vertical es el normal de la página, ambas columnas quedan
+   alineadas porque tienen la misma altura de fila. */
+.gantt-wrap {
+  display: flex;
+  margin: 0 16px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.gantt-labels {
+  flex-shrink: 0;
+  width: 170px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.gantt-label-header {
+  height: 28px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-alt, rgba(0, 0, 0, 0.03));
+}
+
+.gantt-label {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gantt-scroll {
+  flex: 1;
+  overflow-x: auto;
+}
+
+.gantt-timeline {
+  position: relative;
+}
+
+.gantt-header {
+  height: 28px;
+  position: relative;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-alt, rgba(0, 0, 0, 0.03));
+}
+
+.gantt-month-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding: 6px 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  border-left: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.gantt-body {
+  position: relative;
+}
+
+.gantt-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid var(--color-border);
+}
+
+.gantt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px solid var(--color-danger);
+  z-index: 2;
+}
+
+.gantt-row {
+  height: 28px;
+  position: relative;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 6px;
+  height: 16px;
+  border-radius: 4px;
+  background: rgba(255, 74, 0, 0.18);
+  overflow: hidden;
+  z-index: 1;
+}
+
+.gantt-bar-summary {
+  top: 9px;
+  height: 10px;
+  background: rgba(11, 30, 58, 0.25);
+}
+
+.gantt-bar-fill {
+  height: 100%;
+  background: var(--color-primary, #ff4a00);
+  border-radius: 4px 0 0 4px;
+}
+
+.gantt-milestone {
+  position: absolute;
+  top: 5px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  background: var(--color-primary, #ff4a00);
+  transform: rotate(45deg);
+  z-index: 1;
+}
+
 .avance-table-wrap {
   overflow-x: auto;
   padding: 0 16px 20px;

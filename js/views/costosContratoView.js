@@ -165,12 +165,16 @@ export async function renderCostosContratoView(container, obraId) {
             idPrefix: 'detalle-',
             hintText: 'Vinculá la carpeta "PRESUPUESTO ORIGINAL" — cada vez que subas ahí un Excel nuevo, la app lo va a detectar sola.',
           })}
-          <p class="avance-tree-hint">También podés subirlo a mano, sin vincular carpeta:</p>
-          <input type="file" id="presupuesto-file-input" accept=".xlsx,.xls" style="display:none" />
-          <div class="ssma-form-actions">
-            <button type="button" class="btn btn-secondary" id="btn-upload-presupuesto">📄 Subir desglose a mano (Excel)</button>
-            ${presupuestoDetalle ? '<button type="button" class="btn btn-secondary" id="btn-delete-presupuesto">🗑️ Quitar desglose</button>' : ''}
-          </div>
+          ${admin
+            ? `
+              <p class="avance-tree-hint">También podés subirlo a mano, sin vincular carpeta:</p>
+              <input type="file" id="presupuesto-file-input" accept=".xlsx,.xls" style="display:none" />
+              <div class="ssma-form-actions">
+                <button type="button" class="btn btn-secondary" id="btn-upload-presupuesto">📄 Subir desglose a mano (Excel)</button>
+                ${presupuestoDetalle ? '<button type="button" class="btn btn-secondary" id="btn-delete-presupuesto">🗑️ Quitar desglose</button>' : ''}
+              </div>
+            `
+            : '<p class="avance-tree-hint">Solo el admin puede subir o cambiar este desglose — el resto del equipo solo lo ve.</p>'}
           ${renderPresupuestoDetalleHTML()}
         </section>
       </main>
@@ -248,45 +252,49 @@ export async function renderCostosContratoView(container, obraId) {
       }
     });
 
-    const fileInput = container.querySelector('#presupuesto-file-input');
-    container.querySelector('#btn-upload-presupuesto').addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', async () => {
-      const file = fileInput.files?.[0];
-      fileInput.value = '';
-      if (!file) return;
-      try {
-        const buffer = await file.arrayBuffer();
-        const { items, grandTotal, sheetUsed } = parsePresupuestoDetalleXLSX(buffer);
-        const montoRef = contrato?.montoContrato || contrato?.presupuestoOficial || 0;
-        if (montoRef > 0 && Math.abs(grandTotal - montoRef) > montoRef * 0.01) {
-          const seguir = confirm(
-            `Ojo: el desglose que subiste suma ${formatMonto(grandTotal)}, pero el Presupuesto/Monto contrato guardado arriba dice ${formatMonto(montoRef)} — no coinciden. ¿Guardar igual?`
-          );
-          if (!seguir) return;
+    // Subir/quitar el desglose a mano es admin-only (igual que vincular la
+    // carpeta) — el resto del equipo solo lo visualiza, nunca lo toca.
+    if (admin) {
+      const fileInput = container.querySelector('#presupuesto-file-input');
+      container.querySelector('#btn-upload-presupuesto').addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files?.[0];
+        fileInput.value = '';
+        if (!file) return;
+        try {
+          const buffer = await file.arrayBuffer();
+          const { items, grandTotal, sheetUsed } = parsePresupuestoDetalleXLSX(buffer);
+          const montoRef = contrato?.montoContrato || contrato?.presupuestoOficial || 0;
+          if (montoRef > 0 && Math.abs(grandTotal - montoRef) > montoRef * 0.01) {
+            const seguir = confirm(
+              `Ojo: el desglose que subiste suma ${formatMonto(grandTotal)}, pero el Presupuesto/Monto contrato guardado arriba dice ${formatMonto(montoRef)} — no coinciden. ¿Guardar igual?`
+            );
+            if (!seguir) return;
+          }
+          presupuestoDetalle = await saveCostosPresupuestoDetalle({
+            obraId,
+            items,
+            grandTotal,
+            sourceFileName: file.name,
+          });
+          toast(`Desglose guardado: ${items.length} partidas (hoja "${sheetUsed}").`);
+          paint();
+        } catch (err) {
+          console.error('Error leyendo desglose de presupuesto:', err);
+          toast(`⚠️ ${err.message || 'No se pudo leer el archivo.'}`);
         }
-        presupuestoDetalle = await saveCostosPresupuestoDetalle({
-          obraId,
-          items,
-          grandTotal,
-          sourceFileName: file.name,
-        });
-        toast(`Desglose guardado: ${items.length} partidas (hoja "${sheetUsed}").`);
-        paint();
-      } catch (err) {
-        console.error('Error leyendo desglose de presupuesto:', err);
-        toast(`⚠️ ${err.message || 'No se pudo leer el archivo.'}`);
-      }
-    });
-
-    const deleteBtn = container.querySelector('#btn-delete-presupuesto');
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', async () => {
-        if (!confirm('¿Quitar el desglose de partidas guardado? El monto de presupuesto de arriba no se toca.')) return;
-        await deleteCostosPresupuestoDetalle(obraId);
-        presupuestoDetalle = null;
-        toast('Desglose eliminado.');
-        paint();
       });
+
+      const deleteBtn = container.querySelector('#btn-delete-presupuesto');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', async () => {
+          if (!confirm('¿Quitar el desglose de partidas guardado? El monto de presupuesto de arriba no se toca.')) return;
+          await deleteCostosPresupuestoDetalle(obraId);
+          presupuestoDetalle = null;
+          toast('Desglose eliminado.');
+          paint();
+        });
+      }
     }
   }
 

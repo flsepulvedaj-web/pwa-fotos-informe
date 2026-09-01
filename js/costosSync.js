@@ -162,6 +162,12 @@ export async function syncEstadosPagoFromDrive(obraId, folderId, propagateFolder
       const buffer = await blob.arrayBuffer();
       const parsed = parseEstadoPagoXLSX(buffer);
       const saved = await addCostosFactura({
+        // Id fijo (no al azar) derivado del archivo de Drive: si esta
+        // función se dispara 2 veces en paralelo (ej. entrar y salir rápido
+        // de la pantalla, o el auto-sync y el botón manual pisándose), el
+        // segundo intento choca contra el mismo id en vez de crear un
+        // duplicado — se detecta más abajo como ConstraintError.
+        id: `ep-drive-${file.id}`,
         obraId,
         tipo: 'contractual',
         item: parsed.epNumber !== '' ? `EP N°${parsed.epNumber}` : file.name,
@@ -177,6 +183,7 @@ export async function syncEstadosPagoFromDrive(obraId, folderId, propagateFolder
       if (propagateFolderId) await uploadFactura(propagateFolderId, saved);
       added++;
     } catch (err) {
+      if (err?.name === 'ConstraintError') continue; // ya lo había creado otra corrida en paralelo — no es un error real
       console.error(`No se pudo leer el estado de pago "${file.name}" de Drive:`, err);
     }
   }

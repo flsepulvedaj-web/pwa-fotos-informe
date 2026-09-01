@@ -948,11 +948,16 @@ export async function deleteCostosModificacion(id) {
 
 // ---------- Costos: facturación ----------
 
-export async function addCostosFactura({ obraId, tipo, item = '', descripcion = '', numeroFactura = '', fecha, tc = 1, avanceNetoPeriodo = 0, anticipoPeriodo = 0, retencionPeriodo = 0, reajustePeriodo = 0, items = [], sourceFileId = '', sourceFileName = '', updatedAt }) {
+export async function addCostosFactura({ id, obraId, tipo, item = '', descripcion = '', numeroFactura = '', fecha, tc = 1, avanceNetoPeriodo = 0, anticipoPeriodo = 0, retencionPeriodo = 0, reajustePeriodo = 0, items = [], sourceFileId = '', sourceFileName = '', updatedAt }) {
   const store = await tx('costosFacturas', 'readwrite');
   const now = Date.now();
   const factura = {
-    id: uuid(),
+    // `id` fijo opcional (en vez de uuid() al azar): lo usa
+    // syncEstadosPagoFromDrive con un id derivado del archivo de Drive, así
+    // si la sincronización se dispara 2 veces en paralelo (ej. entrar y
+    // salir rápido de la pantalla) el segundo `store.add()` choca contra el
+    // mismo id y tira error en vez de crear un duplicado silencioso.
+    id: id || uuid(),
     obraId,
     tipo, // 'contractual' | 'modificaciones'
     item,

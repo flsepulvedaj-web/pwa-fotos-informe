@@ -94,14 +94,24 @@ export async function renderControlChecklistView(container, obraId) {
     await loadEntryForDate(todayLocalISO());
   }
 
+  // Ids de fotos que YA se están subiendo en esta misma sesión de la
+  // pantalla — sin esto, si `loadEntryForDate` se dispara 2 veces seguidas
+  // para el mismo día (ej. cambiar de pestaña y volver rápido) antes de que
+  // termine de marcarse la primera subida, backfillUnuploadedPhotos las ve
+  // "pendientes" las 2 veces y las sube 2 veces (pasó de verdad: quedaron
+  // duplicadas en Drive). Se marca ACÁ, antes de cualquier `await`, así la
+  // segunda corrida la encuentra ya reclamada.
+  const backfillClaimed = new Set();
+
   /** Fotos que se sacaron antes de que existiera la sincronización (o que
    * fallaron al subir en su momento) — nunca tuvieron `driveFileId`, así
    * que se suben ahora solas, en segundo plano, sin bloquear la pantalla.
    * Best-effort: si falla, se reintenta la próxima vez que se abra este día. */
   function backfillUnuploadedPhotos(type, date, entryId, photosList) {
     if (!obra.checklistDriveFolderId || !isSignedIn()) return;
-    const pending = photosList.filter((p) => !p.driveFileId);
+    const pending = photosList.filter((p) => !p.driveFileId && !backfillClaimed.has(p.id));
     if (!pending.length) return;
+    for (const photo of pending) backfillClaimed.add(photo.id);
     (async () => {
       for (const photo of pending) {
         try {

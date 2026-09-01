@@ -8,6 +8,7 @@ import {
 } from '../db.js';
 import { isSignedIn } from '../googleDrive.js';
 import { uploadFactura, syncFacturasFromDrive } from '../costosSync.js';
+import { parseEstadoPagoXLSX } from '../costosEstadoPagoParser.js';
 import { navigate } from '../router.js';
 import { escapeHTML, confirmDialog, toast } from '../utils.js';
 import { formatMonto } from '../costosDashboard.js';
@@ -75,6 +76,12 @@ export async function renderCostosFacturacionView(container, obraId) {
         <form class="ssma-form" id="fact-form">
           <h2>${editingId ? 'Editar estado de pago' : 'Nuevo estado de pago'}</h2>
 
+          <input type="file" id="ep-file-input" accept=".xlsx,.xls" style="display:none" />
+          <div class="ssma-form-actions">
+            <button type="button" class="btn btn-secondary" id="btn-upload-ep">📄 Cargar desde Excel (rellena el formulario)</button>
+          </div>
+          <p class="avance-tree-hint">Subí el Excel del contratista y completa los campos solo — revisalos y apretá "Guardar" para dejarlo en el historial.</p>
+
           <label for="f-tipo">Tipo</label>
           <select id="f-tipo">
             <option value="contractual" ${(editing?.tipo || 'contractual') === 'contractual' ? 'selected' : ''}>Contractual</option>
@@ -140,6 +147,28 @@ export async function renderCostosFacturacionView(container, obraId) {
 
     const cancelBtn = container.querySelector('#f-cancel-edit');
     if (cancelBtn) cancelBtn.addEventListener('click', () => { editingId = null; paint(); });
+
+    const epFileInput = container.querySelector('#ep-file-input');
+    container.querySelector('#btn-upload-ep').addEventListener('click', () => epFileInput.click());
+    epFileInput.addEventListener('change', async () => {
+      const file = epFileInput.files?.[0];
+      epFileInput.value = '';
+      if (!file) return;
+      try {
+        const buffer = await file.arrayBuffer();
+        const parsed = parseEstadoPagoXLSX(buffer);
+        container.querySelector('#f-item').value = parsed.epNumber !== '' ? `EP N°${parsed.epNumber}` : '';
+        container.querySelector('#f-numero').value = parsed.epNumber !== '' ? String(parsed.epNumber) : '';
+        if (parsed.fecha) container.querySelector('#f-fecha').value = parsed.fecha;
+        container.querySelector('#f-avance').value = parsed.avanceNetoPeriodo;
+        container.querySelector('#f-anticipo').value = parsed.anticipoPeriodo;
+        container.querySelector('#f-retencion').value = parsed.retencionPeriodo;
+        toast(`Formulario completado desde "${file.name}" (hoja "${parsed.sheetUsed}") — revisá y guardá.`);
+      } catch (err) {
+        console.error('Error leyendo estado de pago:', err);
+        toast(`⚠️ ${err.message || 'No se pudo leer el archivo.'}`);
+      }
+    });
 
     container.querySelector('#fact-form').addEventListener('submit', async (e) => {
       e.preventDefault();

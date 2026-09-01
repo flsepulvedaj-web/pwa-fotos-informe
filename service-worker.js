@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v98';
+const CACHE_VERSION = 'v99';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -30,6 +30,7 @@ const APP_SHELL = [
   './js/driveLinkSection.js',
   './js/mppBackend.js',
   './js/costosPresupuestoParser.js',
+  './js/costosEstadoPagoParser.js',
   './js/permissions.js',
   './js/obraSync.js',
   './js/googleDrive.js',

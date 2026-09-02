@@ -507,6 +507,35 @@ button {
   }
 }
 
+/* Visor de fotos en grande (openPhotoLightbox en utils.js) — pantalla
+   completa oscura, la imagen entera visible sin recortar. */
+.photo-lightbox-overlay {
+  background: rgba(0, 0, 0, 0.92);
+  align-items: center;
+  z-index: 200;
+}
+
+.photo-lightbox-img {
+  max-width: 94vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.photo-lightbox-close {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
 .modal {
   width: 100%;
   max-width: 420px;

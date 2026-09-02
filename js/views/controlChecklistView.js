@@ -21,7 +21,7 @@ import { uploadObrasIndex } from '../obraSync.js';
 import { isAdmin } from '../permissions.js';
 import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
 import { navigate, getQueryParams } from '../router.js';
-import { escapeHTML, downscaleImageBlob, confirmDialog, toast, promptDialog } from '../utils.js';
+import { escapeHTML, downscaleImageBlob, confirmDialog, toast, promptDialog, openPhotoLightbox } from '../utils.js';
 
 function todayLocalISO() {
   const d = new Date();
@@ -226,12 +226,16 @@ export async function renderControlChecklistView(container, obraId) {
             <div class="protocol-photo-grid" id="checklist-photo-grid">
               ${photos.map((p) => `
                 <div class="protocol-photo-item">
-                  <img src="${trackURL(URL.createObjectURL(p.blob))}" alt="Foto" />
+                  <img src="${trackURL(URL.createObjectURL(p.blob))}" alt="Foto" data-open-photo="${p.id}" />
                   <button type="button" class="protocol-photo-delete" data-photo-id="${p.id}">✕</button>
                 </div>
               `).join('')}
             </div>
-            <button type="button" class="btn btn-secondary" id="btn-add-photos">📷 Agregar fotos</button>
+            <div class="ssma-form-actions">
+              <button type="button" class="btn btn-secondary" id="btn-take-photo">📷 Tomar foto</button>
+              <button type="button" class="btn btn-secondary" id="btn-add-photos">🖼️ Elegir de galería</button>
+            </div>
+            <input type="file" id="checklist-photo-camera-input" accept="image/*" capture="environment" hidden />
             <input type="file" id="checklist-photo-input" accept="image/*" multiple hidden />
           </section>
 
@@ -375,11 +379,7 @@ export async function renderControlChecklistView(container, obraId) {
       }, 500);
     });
 
-    const photoInput = container.querySelector('#checklist-photo-input');
-    container.querySelector('#btn-add-photos').addEventListener('click', () => photoInput.click());
-    photoInput.addEventListener('change', async () => {
-      const files = [...photoInput.files];
-      photoInput.value = '';
+    async function handlePhotoFiles(files) {
       if (!files.length) return;
       let added = 0;
       for (const file of files) {
@@ -399,14 +399,34 @@ export async function renderControlChecklistView(container, obraId) {
         photos = await getChecklistPhotosByEntry(entry.id);
         paint();
       }
+    }
+
+    const photoInput = container.querySelector('#checklist-photo-input');
+    container.querySelector('#btn-add-photos').addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', () => {
+      const files = [...photoInput.files];
+      photoInput.value = '';
+      handlePhotoFiles(files);
+    });
+
+    const cameraInput = container.querySelector('#checklist-photo-camera-input');
+    container.querySelector('#btn-take-photo').addEventListener('click', () => cameraInput.click());
+    cameraInput.addEventListener('change', () => {
+      const files = [...cameraInput.files];
+      cameraInput.value = '';
+      handlePhotoFiles(files);
     });
 
     container.querySelector('#checklist-photo-grid').addEventListener('click', async (e) => {
-      const btn = e.target.closest('.protocol-photo-delete');
-      if (!btn) return;
-      await deleteChecklistPhoto(btn.dataset.photoId);
-      photos = await getChecklistPhotosByEntry(entry.id);
-      paint();
+      const delBtn = e.target.closest('.protocol-photo-delete');
+      if (delBtn) {
+        await deleteChecklistPhoto(delBtn.dataset.photoId);
+        photos = await getChecklistPhotosByEntry(entry.id);
+        paint();
+        return;
+      }
+      const img = e.target.closest('[data-open-photo]');
+      if (img) openPhotoLightbox(img.src);
     });
 
     container.querySelectorAll('[data-open-date]').forEach((btn) => {

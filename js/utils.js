@@ -164,6 +164,30 @@ export function confirmDialog(message) {
   });
 }
 
+/**
+ * Muestra una foto en grande (pantalla completa, con fondo oscuro) al
+ * tocarla en cualquier grilla de miniaturas de la app — antes la única
+ * forma de ver una foto en tamaño real era entrar a la carpeta de Drive.
+ * Reusable: no depende de ningún módulo en particular, solo necesita la
+ * URL de la imagen (un object URL, típicamente).
+ */
+export function openPhotoLightbox(url) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay photo-lightbox-overlay';
+  overlay.innerHTML = `
+    <button type="button" class="photo-lightbox-close" aria-label="Cerrar">✕</button>
+    <img src="${url}" alt="Foto" class="photo-lightbox-img" />
+  `;
+  document.body.appendChild(overlay);
+
+  function cleanup() {
+    overlay.remove();
+  }
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.closest('.photo-lightbox-close')) cleanup();
+  });
+}
+
 export function toast(message) {
   const el = document.createElement('div');
   el.className = 'toast';

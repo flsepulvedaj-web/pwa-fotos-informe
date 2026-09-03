@@ -235,7 +235,6 @@ export async function renderControlChecklistView(container, obraId) {
               <button type="button" class="btn btn-secondary" id="btn-take-photo">📷 Tomar foto</button>
               <button type="button" class="btn btn-secondary" id="btn-add-photos">🖼️ Elegir de galería</button>
             </div>
-            <input type="file" id="checklist-photo-camera-input" accept="image/*" capture="environment" hidden />
             <input type="file" id="checklist-photo-input" accept="image/*" multiple hidden />
           </section>
 
@@ -409,12 +408,8 @@ export async function renderControlChecklistView(container, obraId) {
       handlePhotoFiles(files);
     });
 
-    const cameraInput = container.querySelector('#checklist-photo-camera-input');
-    container.querySelector('#btn-take-photo').addEventListener('click', () => cameraInput.click());
-    cameraInput.addEventListener('change', () => {
-      const files = [...cameraInput.files];
-      cameraInput.value = '';
-      handlePhotoFiles(files);
+    container.querySelector('#btn-take-photo').addEventListener('click', () => {
+      navigate(`/control/obra/${obraId}/checklist/camera?type=${type.key}&date=${entry.date}`);
     });
 
     container.querySelector('#checklist-photo-grid').addEventListener('click', async (e) => {

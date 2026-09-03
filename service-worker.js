@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v108';
+const CACHE_VERSION = 'v109';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -49,6 +49,7 @@ const APP_SHELL = [
   './js/views/controlObraView.js',
   './js/views/controlSSMAView.js',
   './js/views/controlChecklistView.js',
+  './js/views/checklistCameraView.js',
   './js/views/controlAvanceView.js',
   './js/views/costosObraView.js',
   './js/views/rdiObraView.js',

@@ -188,6 +188,31 @@ export function openPhotoLightbox(url) {
   });
 }
 
+/**
+ * ¿"a" y "b" son nombres de obra parecidos? Compara por PALABRAS en común,
+ * no por texto exacto — así detecta cosas como "589 loncoche" vs "File 589
+ * Loncoche" (mismas palabras clave, distinto orden/mayúsculas/alguna
+ * palabra de más o de menos), que fue justo el caso real que generó obras
+ * duplicadas por error (alguien no vio la obra ya creada y tipeó el nombre
+ * de nuevo, ligeramente distinto). Umbral: al menos el 60% de las palabras
+ * del nombre más corto tienen que aparecer también en el más largo.
+ */
+export function areObraNamesSimilar(a, b) {
+  const tokenize = (s) => new Set(s.toLowerCase().trim().split(/\s+/).filter(Boolean));
+  const ta = tokenize(a);
+  const tb = tokenize(b);
+  if (!ta.size || !tb.size) return false;
+  const [smaller, larger] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
+  let overlap = 0;
+  for (const t of smaller) if (larger.has(t)) overlap++;
+  return overlap / smaller.size >= 0.6;
+}
+
+/** Primera obra existente "parecida" a `name`, o null. */
+export function findSimilarObra(name, obras) {
+  return obras.find((o) => areObraNamesSimilar(o.name, name)) || null;
+}
+
 export function toast(message) {
   const el = document.createElement('div');
   el.className = 'toast';

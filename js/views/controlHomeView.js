@@ -3,7 +3,7 @@ import { isSignedIn, getSignedInEmail } from '../googleDrive.js';
 import { isAdmin, obrasForEmail, fetchPermissions, getCachedPermissions } from '../permissions.js';
 import { syncObrasFromDrive, uploadObrasIndex, deleteObraEverywhere } from '../obraSync.js';
 import { navigate } from '../router.js';
-import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
+import { promptDialog, confirmDialog, toast, escapeHTML, findSimilarObra } from '../utils.js';
 
 /**
  * Pantalla de inicio del módulo Control: lista de obras (las mismas que usa
@@ -86,6 +86,16 @@ export async function renderControlHomeView(container) {
         confirmLabel: 'Crear',
       });
       if (result && result.name) {
+        // Contra TODAS las obras (no solo las que este correo puede ver) —
+        // así también avisa si la parecida es una a la que este usuario no
+        // tiene acceso, que es justo el caso real que generó duplicados
+        // (alguien no la veía por un tema de permisos/sincronización y
+        // tipeó el nombre de nuevo).
+        const similar = findSimilarObra(result.name, await getAllObras());
+        if (similar) {
+          const seguir = await confirmDialog(`Ya existe una obra parecida: "${similar.name}" — ¿seguro que querés crear una obra nueva?`);
+          if (!seguir) return;
+        }
         await createObra(result.name);
         toast('Obra creada.');
         obras = applyObraPermissions(await getAllObras(), getCachedPermissions());

@@ -1,7 +1,7 @@
 import { getAllObras, createObra } from '../db.js';
 import { deleteObraEverywhere } from '../obraSync.js';
 import { navigate } from '../router.js';
-import { promptDialog, confirmDialog, toast, escapeHTML } from '../utils.js';
+import { promptDialog, confirmDialog, toast, escapeHTML, findSimilarObra } from '../utils.js';
 import {
   getSignedInEmail,
   getProtocolsRootFolder,
@@ -91,6 +91,11 @@ export async function renderProtocolHomeView(container) {
       confirmLabel: 'Crear',
     });
     if (result && result.name) {
+      const similar = findSimilarObra(result.name, await getAllObras());
+      if (similar) {
+        const seguir = await confirmDialog(`Ya existe una obra parecida: "${similar.name}" — ¿seguro que querés crear una obra nueva?`);
+        if (!seguir) return;
+      }
       await createObra(result.name);
       renderProtocolHomeView(container);
     }

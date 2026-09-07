@@ -164,11 +164,28 @@ export function signOut() {
  * admin (Pancho) y por lo tanto puede ver la opción de cambiar la carpeta
  * raíz — cualquier otra persona la ve fija.
  */
+/** `fetch` normal no tiene límite de tiempo propio — con mala señal (típico
+ * en obra) una llamada colgada puede dejar esperando para siempre lo que
+ * sea que la esté esperando. `getSignedInEmail()` de acá abajo se llama al
+ * principio de casi todas las pantallas del Control (ANTES de pintar nada),
+ * así que una sola llamada colgada dejaba la pantalla entera "pegada" hasta
+ * que Pancho refrescaba a mano — con esto corta a los 8 segundos y sigue
+ * como si hubiera fallado (mismo camino que ya existía para errores de red). */
+async function fetchWithTimeout(url, options, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function getSignedInEmail() {
   if (!isSignedIn()) return null;
   if (cachedEmail) return cachedEmail;
   try {
-    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    const res = await fetchWithTimeout('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;

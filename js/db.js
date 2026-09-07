@@ -720,11 +720,11 @@ export async function getChecklistTypesByObra(obraId) {
   return results.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.createdAt - b.createdAt);
 }
 
-export async function updateChecklistType(id, changes) {
+export async function updateChecklistType(id, changes, { updatedAt = Date.now() } = {}) {
   const store = await tx('controlChecklistTypes', 'readwrite');
   const type = await wrap(store.get(id));
   if (!type) return null;
-  Object.assign(type, changes);
+  Object.assign(type, changes, { updatedAt });
   await wrap(store.put(type));
   return type;
 }

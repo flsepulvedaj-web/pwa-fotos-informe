@@ -16,7 +16,7 @@ import {
 } from '../db.js';
 import { DEFAULT_CHECKLIST_TYPES, CHECKLIST_STATUS } from '../controlChecklistTemplates.js';
 import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
-import { uploadChecklistEntry, syncChecklistFromDrive, uploadChecklistPhoto, syncChecklistPhotosFromDrive } from '../controlSync.js';
+import { uploadChecklistEntry, syncChecklistFromDrive, uploadChecklistPhoto, syncChecklistPhotosFromDrive, uploadChecklistType, syncChecklistTypesFromDrive } from '../controlSync.js';
 import { uploadObrasIndex } from '../obraSync.js';
 import { isAdmin } from '../permissions.js';
 import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
@@ -144,20 +144,24 @@ export async function renderControlChecklistView(container, obraId) {
     // La sync automática nunca dispara el popup de sesión de Google.
     if (auto && !isSignedIn()) return;
     try {
-      // Primero los checklists (JSON, livianos) y recién después las fotos:
+      // Primero la lista de preguntas (por si cambió algún texto), después
+      // los checklists (JSON, livianos) y recién al final las fotos:
       // syncChecklistPhotosFromDrive necesita que el checklist del día ya
       // exista localmente para poder engancharle la foto — si un día
       // llegara a faltar (poco probable, el JSON es rapidísimo), esa foto
       // queda para la próxima sincronización, no se pierde.
+      const typesChanged = await syncChecklistTypesFromDrive(obraId, obra.checklistDriveFolderId);
+      if (typesChanged) types = await getChecklistTypesByObra(obraId);
       const changed = await syncChecklistFromDrive(obraId, obra.checklistDriveFolderId);
       const newPhotos = await syncChecklistPhotosFromDrive(obraId, obra.checklistDriveFolderId);
-      if (changed || newPhotos) {
+      if (typesChanged || changed || newPhotos) {
         entries = await getChecklistEntriesByType(activeTypeId);
         await loadEntryForDate(entry.date);
         const parts = [];
+        if (typesChanged) parts.push(`${typesChanged} lista(s) de preguntas`);
         if (changed) parts.push(`${changed} checklist(s)`);
         if (newPhotos) parts.push(`${newPhotos} foto(s)`);
-        toast(`📥 ${parts.join(' y ')} traído(s) de Drive.`);
+        toast(`📥 ${parts.join(', ')} traído(s) de Drive.`);
         paint();
       } else if (!auto) {
         toast('Ya tenés todo lo más reciente.');
@@ -306,12 +310,23 @@ export async function renderControlChecklistView(container, obraId) {
     if (editingItems) {
       const editor = container.querySelector('#checklist-item-editor');
 
+      // Guarda local Y sube a Drive el texto de la lista — antes esto solo
+      // se guardaba local: un cambio de texto se veía "perdido" apenas se
+      // miraba desde otro teléfono o se limpiaba el caché.
+      async function saveTypeItems() {
+        const updated = await updateChecklistType(type.id, { items: type.items });
+        if (obra.checklistDriveFolderId) {
+          const ok = await uploadChecklistType(obra.checklistDriveFolderId, updated);
+          if (!ok) toast('⚠️ El cambio de texto no se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
+        }
+      }
+
       editor.querySelectorAll('.checklist-edit-label').forEach((input, i) => {
         input.addEventListener('blur', async () => {
           const value = input.value.trim();
           if (!value) return;
           type.items[i].label = value;
-          await updateChecklistType(type.id, { items: type.items });
+          await saveTypeItems();
         });
       });
 
@@ -319,7 +334,7 @@ export async function renderControlChecklistView(container, obraId) {
         btn.addEventListener('click', async () => {
           const idx = Number(btn.dataset.removeIndex);
           type.items.splice(idx, 1);
-          await updateChecklistType(type.id, { items: type.items });
+          await saveTypeItems();
           paint();
         });
       });
@@ -332,7 +347,7 @@ export async function renderControlChecklistView(container, obraId) {
         });
         if (result && result.label) {
           type.items.push({ id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`, label: result.label, nota: '' });
-          await updateChecklistType(type.id, { items: type.items });
+          await saveTypeItems();
           paint();
         }
       });

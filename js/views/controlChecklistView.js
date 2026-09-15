@@ -16,7 +16,8 @@ import {
 } from '../db.js';
 import { DEFAULT_CHECKLIST_TYPES, CHECKLIST_STATUS } from '../controlChecklistTemplates.js';
 import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
-import { uploadChecklistEntry, syncChecklistFromDrive, uploadChecklistPhoto, syncChecklistPhotosFromDrive, uploadChecklistType, syncChecklistTypesFromDrive } from '../controlSync.js';
+import { uploadChecklistEntry, syncChecklistFromDrive, uploadChecklistPhoto, syncChecklistPhotosFromDrive, uploadChecklistType, syncChecklistTypesFromDrive, uploadChecklistPDF } from '../controlSync.js';
+import { buildChecklistPDF } from '../checklistPdfExport.js';
 import { uploadObrasIndex } from '../obraSync.js';
 import { isAdmin } from '../permissions.js';
 import { driveLinkSectionHTML, wireDriveLinkSection } from '../driveLinkSection.js';
@@ -393,6 +394,28 @@ export async function renderControlChecklistView(container, obraId) {
         const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
         if (!ok) toast('⚠️ No se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
       }
+      regenerateAndUploadPdf();
+    }
+
+    // Respaldo legible del checklist del día: se regenera y sube en segundo
+    // plano cada vez que algo cambia (respuesta, observación o foto), para
+    // que en Drive siempre quede un PDF (no el .json crudo) igual de
+    // ordenado que las fotos. No bloquea la UI ni avisa si falla.
+    async function regenerateAndUploadPdf() {
+      if (!obra.checklistDriveFolderId) return;
+      try {
+        const currentPhotos = await getChecklistPhotosByEntry(entry.id);
+        const blob = await buildChecklistPDF({
+          obraName: obra.name,
+          typeTitle: type.title,
+          date: entry.date,
+          items: mergeEntryItemsWithTemplate(type, entry),
+          photos: currentPhotos,
+        });
+        await uploadChecklistPDF(obra.checklistDriveFolderId, type.title, entry.date, blob);
+      } catch (err) {
+        console.error('No se pudo generar/subir el PDF del checklist:', err);
+      }
     }
 
     container.querySelector('#control-point-list').addEventListener('change', async (e) => {
@@ -434,6 +457,7 @@ export async function renderControlChecklistView(container, obraId) {
       if (added) {
         photos = await getChecklistPhotosByEntry(entry.id);
         paint();
+        regenerateAndUploadPdf();
       }
     }
 
@@ -455,6 +479,7 @@ export async function renderControlChecklistView(container, obraId) {
         await deleteChecklistPhoto(delBtn.dataset.photoId);
         photos = await getChecklistPhotosByEntry(entry.id);
         paint();
+        regenerateAndUploadPdf();
         return;
       }
       const img = e.target.closest('[data-open-photo]');

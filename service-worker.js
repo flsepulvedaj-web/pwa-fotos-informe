@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v113';
+const CACHE_VERSION = 'v114';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -32,6 +32,7 @@ const APP_SHELL = [
   './js/costosPresupuestoParser.js',
   './js/costosEstadoPagoParser.js',
   './js/ganttChart.js',
+  './js/checklistPdfExport.js',
   './js/permissions.js',
   './js/obraSync.js',
   './js/googleDrive.js',

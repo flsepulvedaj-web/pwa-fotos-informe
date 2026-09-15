@@ -281,6 +281,35 @@ export async function syncChecklistFromDrive(obraId, folderId) {
 }
 
 /**
+ * Sube (best-effort) el PDF de respaldo de UN día de checklist — a
+ * diferencia de las fotos (que siempre son archivos nuevos), el PDF
+ * SIEMPRE se sobreescribe (un solo archivo vigente por día, como
+ * checklist-type-*.json), así que Pancho puede abrirlo directo en Drive y
+ * ver siempre el estado más reciente sin juntar copias viejas. Va en la
+ * MISMA carpeta Tipo → Fecha que las fotos de ese día — pidió que quedara
+ * "ordenado igual que las fotos", así que se resuelve con la misma
+ * findOrCreateDriveFolder.
+ */
+export async function uploadChecklistPDF(folderId, typeTitle, date, blob) {
+  if (!folderId) return false;
+  try {
+    const typeFolder = await findOrCreateDriveFolder(folderId, typeTitle);
+    const dateFolder = await findOrCreateDriveFolder(typeFolder.id, date);
+    const filename = `Checklist ${typeTitle} ${date}.pdf`;
+    const existing = await findFileByName(dateFolder.id, filename);
+    if (existing) {
+      await updateFileContent(existing.id, blob);
+    } else {
+      await uploadFile(dateFolder.id, blob, filename);
+    }
+    return true;
+  } catch (err) {
+    console.error('No se pudo subir el PDF del checklist a Drive:', err);
+    return false;
+  }
+}
+
+/**
  * Sube (best-effort) una foto del checklist a Drive, ORDENADA en
  * subcarpetas Tipo → Fecha (ej. "SSMA/2026-09-01/") dentro de la carpeta de
  * Checklist vinculada — así queda prolijo para mirar directo en Drive, sin

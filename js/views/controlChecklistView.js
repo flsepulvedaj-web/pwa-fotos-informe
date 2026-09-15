@@ -175,7 +175,16 @@ export async function renderControlChecklistView(container, obraId) {
   function paint() {
     revokeAllURLs();
     const type = activeType();
-    const sinContestarCount = entry.items.filter((it) => !it.status).length;
+    // El texto (label/nota) sale SIEMPRE de la plantilla vigente del tipo,
+    // no de lo que se guardó en el día — así editar una pregunta se ve al
+    // toque en cualquier día (pasado, hoy o futuro), sin tener que borrar
+    // nada. Lo único que se guarda por día son las RESPUESTAS (status/
+    // observación), enganchadas por `itemId` — si se agrega una pregunta
+    // nueva, los días viejos la muestran sin contestar (nunca la tuvieron);
+    // si se borra una, simplemente deja de mostrarse (la respuesta vieja
+    // queda guardada pero invisible, no se pierde por si se deshace).
+    const mergedItems = mergeEntryItemsWithTemplate(type, entry);
+    const sinContestarCount = mergedItems.filter((it) => !it.status).length;
 
     container.innerHTML = `
       <header class="app-header">
@@ -211,7 +220,7 @@ export async function renderControlChecklistView(container, obraId) {
 
         ${editingItems ? `
           <section class="checklist-item-editor" id="checklist-item-editor">
-            <p class="checklist-edit-hint">Estos cambios aplican a los días nuevos — el checklist de días ya creados (incluido hoy, si ya lo abriste) no cambia.</p>
+            <p class="checklist-edit-hint">El cambio se ve al toque en cualquier día — pasado, hoy o futuro.</p>
             ${type.items.map((it, i) => `
               <div class="checklist-edit-row" data-item-index="${i}">
                 <input type="text" class="checklist-edit-label" value="${escapeHTML(it.label)}" />
@@ -222,7 +231,7 @@ export async function renderControlChecklistView(container, obraId) {
           </section>
         ` : `
           <section class="control-point-list" id="control-point-list">
-            ${entry.items.map((it, i) => renderChecklistItemRow(it, i, i === highlightItemIndex)).join('')}
+            ${mergedItems.map((it, i) => renderChecklistItemRow(it, i, i === highlightItemIndex)).join('')}
           </section>
 
           <section class="protocol-photos">
@@ -246,8 +255,13 @@ export async function renderControlChecklistView(container, obraId) {
           ${entries.length ? `
             <section class="ssma-history-list">
               ${entries.map((e) => {
-                const sinContestar = e.items.filter((it) => !it.status).length;
-                const noCumple = e.items.filter((it) => it.status && it.status !== 'SI' && it.status !== 'N_A').length;
+                // Mismo criterio "en vivo" que el día abierto (ver
+                // mergeEntryItemsWithTemplate) — si no, un día viejo podía
+                // seguir mostrando "✅ Checklist completo" en esta lista
+                // aunque al abrirlo mostrara ítems nuevos sin contestar.
+                const eItems = mergeEntryItemsWithTemplate(type, e);
+                const sinContestar = eItems.filter((it) => !it.status).length;
+                const noCumple = eItems.filter((it) => it.status && it.status !== 'SI' && it.status !== 'N_A').length;
                 return `
                   <button type="button" class="ssma-history-main" data-open-date="${e.date}">
                     <span class="ssma-history-date">${formatDateEs(e.date)}${e.date === entry.date ? ' (actual)' : ''}</span>
@@ -360,17 +374,32 @@ export async function renderControlChecklistView(container, obraId) {
       paint();
     });
 
-    container.querySelector('#control-point-list').addEventListener('change', async (e) => {
-      const select = e.target.closest('.checklist-status-select');
-      if (!select) return;
-      const row = select.closest('.control-point-row');
-      const index = Number(row.dataset.index);
-      entry.items[index].status = select.value || null;
+    // Busca/crea (por itemId, no por posición — la posición depende de la
+    // plantilla vigente, que puede tener más o menos preguntas que las que
+    // este día ya tenía guardadas) la respuesta de un ítem dentro de
+    // entry.items, la modifica, y guarda+sube. `label`/`nota` NO se tocan
+    // acá (si el registro es viejo los sigue teniendo, no hace nada — el
+    // texto que se muestra siempre sale de la plantilla, ver
+    // mergeEntryItemsWithTemplate).
+    async function saveEntryItemAnswer(itemId, changes) {
+      let stored = entry.items.find((it) => it.itemId === itemId);
+      if (!stored) {
+        stored = { itemId, label: '', nota: '', status: null, resolved: false, observacion: '' };
+        entry.items.push(stored);
+      }
+      Object.assign(stored, changes);
       entry = await updateChecklistEntry(entry.id, { items: entry.items });
       if (obra.checklistDriveFolderId) {
         const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
         if (!ok) toast('⚠️ No se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
       }
+    }
+
+    container.querySelector('#control-point-list').addEventListener('change', async (e) => {
+      const select = e.target.closest('.checklist-status-select');
+      if (!select) return;
+      const row = select.closest('.control-point-row');
+      await saveEntryItemAnswer(row.dataset.itemId, { status: select.value || null });
     });
 
     // Observación: se guarda con un pequeño retraso mientras se escribe
@@ -380,17 +409,10 @@ export async function renderControlChecklistView(container, obraId) {
       const input = e.target.closest('.checklist-observacion-input');
       if (!input) return;
       const row = input.closest('.control-point-row');
-      const index = Number(row.dataset.index);
+      const itemId = row.dataset.itemId;
       const value = input.value;
       clearTimeout(observacionTimer);
-      observacionTimer = setTimeout(async () => {
-        entry.items[index].observacion = value;
-        entry = await updateChecklistEntry(entry.id, { items: entry.items });
-        if (obra.checklistDriveFolderId) {
-          const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
-          if (!ok) toast('⚠️ No se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
-        }
-      }, 500);
+      observacionTimer = setTimeout(() => saveEntryItemAnswer(itemId, { observacion: value }), 500);
     });
 
     async function handlePhotoFiles(files) {
@@ -459,9 +481,32 @@ export async function renderControlChecklistView(container, obraId) {
   paint();
 }
 
+/**
+ * Junta, por `itemId`, el texto VIGENTE de la plantilla (label/nota — lo
+ * que se está preguntando ahora) con la RESPUESTA guardada de ese día
+ * (status/observacion/resolved) — así el texto se ve siempre actualizado,
+ * incluso mirando un día viejo, sin tocar la respuesta que ya se guardó.
+ * Recorre `type.items` (no `entry.items`) para que el orden y el set de
+ * preguntas sea siempre el de la plantilla actual.
+ */
+function mergeEntryItemsWithTemplate(type, entry) {
+  return type.items.map((templateItem) => {
+    const itemId = templateItem.itemId ?? templateItem.id;
+    const stored = entry.items.find((it) => it.itemId === itemId);
+    return {
+      itemId,
+      label: templateItem.label,
+      nota: templateItem.nota || '',
+      status: stored?.status ?? null,
+      resolved: stored?.resolved ?? false,
+      observacion: stored?.observacion || '',
+    };
+  });
+}
+
 function renderChecklistItemRow(item, index, highlighted) {
   return `
-    <div class="control-point-row${highlighted ? ' control-point-highlighted' : ''}" data-index="${index}">
+    <div class="control-point-row${highlighted ? ' control-point-highlighted' : ''}" data-index="${index}" data-item-id="${escapeHTML(String(item.itemId))}">
       <div class="control-point-label">${index + 1}. ${escapeHTML(item.label)}</div>
       ${item.nota ? `<div class="control-point-instruction">${escapeHTML(item.nota)}</div>` : ''}
       <select class="checklist-status-select">

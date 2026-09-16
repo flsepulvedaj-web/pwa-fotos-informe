@@ -11,8 +11,10 @@ export async function renderBancoHomeView(container) {
   const allowed = modulesForEmail(email, getCachedPermissions());
 
   const fotosOk = allowed.includes('fotos');
+  const estudioMercadoOk = allowed.includes('estudio-mercado');
   const sections = [
     { id: 'fotos', route: fotosOk ? '/fotos' : null, icon: '📷', title: 'Avance de obra', desc: 'Fotos de obra → informe PDF', ready: fotosOk },
+    { id: 'estudio-mercado', route: estudioMercadoOk ? '/banco/estudio-mercado' : null, icon: '📊', title: 'Estudio de mercado', desc: 'Defensa de tasación por tipología', ready: estudioMercadoOk },
     { id: 'informes-tecnicos', route: null, icon: '📄', title: 'Informes técnicos', desc: 'Próximamente', ready: false },
     { id: 'research', route: null, icon: '🔬', title: 'Research', desc: 'Próximamente', ready: false },
   ];

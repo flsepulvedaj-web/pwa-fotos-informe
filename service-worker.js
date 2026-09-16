@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v116';
+const CACHE_VERSION = 'v118';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -35,6 +35,13 @@ const APP_SHELL = [
   './js/checklistPdfExport.js',
   './js/permissions.js',
   './js/obraSync.js',
+  './js/tasacionExcelParser.js',
+  './js/osm.js',
+  './js/tasacionMarket.js',
+  './js/tasacionRender.js',
+  './js/tasacionUF.js',
+  './js/tasacionSync.js',
+  './templates/tasacion-template.html',
   './js/googleDrive.js',
   './js/sync.js',
   './js/views/homeView.js',
@@ -65,6 +72,8 @@ const APP_SHELL = [
   './js/views/permissionsAdminView.js',
   './js/views/bancoHomeView.js',
   './js/views/proyectosHomeView.js',
+  './js/views/tasacionHomeView.js',
+  './js/views/tasacionEstudioView.js',
   './vendor/jspdf.umd.min.js',
   './vendor/xlsx.full.min.js',
   './icons/icon-192.png',

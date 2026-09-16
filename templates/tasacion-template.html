@@ -1,0 +1,369 @@
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F2F4F3; --paper:#FCFCFB; --ink:#1C292D; --ink2:#55666B; --ink3:#7C8B8F; --rule:#D5DCDA;
+  --land:#E8ECE9; --sea:#CFDFE5; --sea-ink:#6C8F9B; --st-major:#FFFFFF; --st-case:#C3CBC8; --st-minor:#FAFBFA;
+  --accent:#0D5870; --accent-soft:rgba(13,88,112,.09);
+  --s-new:#2a78d6; --s-used:#eb6834; --s-ref:#1baf7a;
+  --ok:#2E7D4F; --warn:#B7791F; --bad:#B4473A;
+  --band:rgba(28,41,45,.10);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#101618; --paper:#1a1a19; --ink:#E6ECEC; --ink2:#A3B1B4; --ink3:#7F8D90; --rule:#2C3739;
+    --land:#182124; --sea:#0D2630; --sea-ink:#5E8795; --st-major:#3A474B; --st-case:#0B1113; --st-minor:#2A3538;
+    --accent:#5CC1DD; --accent-soft:rgba(92,193,221,.12);
+    --s-new:#3987e5; --s-used:#d95926; --s-ref:#199e70;
+    --ok:#5BC28A; --warn:#E3A84A; --bad:#E07A6C; --band:rgba(230,236,236,.10);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#101618; --paper:#1a1a19; --ink:#E6ECEC; --ink2:#A3B1B4; --ink3:#7F8D90; --rule:#2C3739;
+  --land:#182124; --sea:#0D2630; --sea-ink:#5E8795; --st-major:#3A474B; --st-case:#0B1113; --st-minor:#2A3538;
+  --accent:#5CC1DD; --accent-soft:rgba(92,193,221,.12);
+  --s-new:#3987e5; --s-used:#d95926; --s-ref:#199e70;
+  --ok:#5BC28A; --warn:#E3A84A; --bad:#E07A6C; --band:rgba(230,236,236,.10);
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:14px/1.5 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding-inline:16px;padding-block:20px 40px}
+.wrap{max-width:1220px;margin:0 auto;display:grid;gap:18px}
+header.cart{display:grid;grid-template-columns:1fr auto;gap:10px 24px;align-items:end;border-bottom:2px solid var(--ink);padding-bottom:12px}
+.eyebrow{font:500 11px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
+h1{font:700 clamp(28px,4.4vw,44px)/1 "Barlow Condensed","Arial Narrow",sans-serif;letter-spacing:.01em;margin:6px 0 0;text-transform:uppercase;text-wrap:balance}
+.meta{font:400 12px/1.55 "IBM Plex Mono",ui-monospace,monospace;color:var(--ink2);text-align:right}
+@media (max-width:900px){.meta{text-align:left} header.cart{grid-template-columns:1fr}}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ground);padding-block:8px}
+.tabs button{font:600 15px/1 "Barlow Condensed","Arial Narrow",sans-serif;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--rule);background:var(--paper);color:var(--ink2);padding:10px 14px;border-radius:4px;cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.tabs button .pill{font:500 11px/1 "IBM Plex Mono",monospace;padding:3px 6px;border-radius:3px;color:#fff}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.lvl-solida{background:var(--ok)} .lvl-defendible{background:var(--warn)} .lvl-debil{background:var(--bad)}
+.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:760px){.summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.card{background:var(--paper);border:1px solid var(--rule);padding:10px 12px}
+.card .k{font:500 10.5px/1.2 "IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+.card .v{font:500 24px/1.15 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;margin-top:4px}
+.card .s{font-size:12px;color:var(--ink2)}
+.card.mkt{border-color:var(--accent);box-shadow:inset 0 3px 0 var(--accent)}
+.card .d{font:500 12px/1.3 "IBM Plex Mono",monospace;margin-top:4px}
+.good{color:var(--ok)} .badc{color:var(--bad)} .neu{color:var(--warn)}
+.ov td{vertical-align:middle} .ov .lect{font-size:12.5px;color:var(--ink2)} .ov tr.on{background:var(--accent-soft)}
+.pc{font:600 12px/1 "IBM Plex Mono",monospace}
+.inmk{font:600 11px/1 "IBM Plex Mono",monospace;color:var(--accent)}
+.verdict{background:var(--paper);border:1px solid var(--rule);padding:14px 16px;display:grid;gap:8px}
+.verdict .head{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.badge{font:600 12px/1 "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.06em;color:#fff;padding:5px 8px;border-radius:3px}
+.verdict h2{font:600 24px/1.1 "Barlow Condensed","Arial Narrow",sans-serif;text-transform:uppercase;margin:0;letter-spacing:.01em;text-wrap:balance}
+.verdict ul{margin:0;padding-left:18px;display:grid;gap:5px;max-width:95ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:980px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--paper);border:1px solid var(--rule)}
+.panel h3{font:600 16px/1.2 "Barlow Condensed","Arial Narrow",sans-serif;text-transform:uppercase;letter-spacing:.03em;margin:0;padding:10px 12px;border-bottom:1px solid var(--rule)}
+.mapbox svg{display:block;width:100%;height:auto;max-height:78vh}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:9px 12px;border-top:1px solid var(--rule);font-size:12px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;display:inline-block;border:2px solid var(--paper);box-shadow:0 0 0 1px var(--ink3)}
+.chartbox{padding:6px 8px 10px;position:relative}
+.chartbox svg{display:block;width:100%;height:auto;overflow:visible}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);font-size:12px;line-height:1.35;padding:6px 8px;border-radius:4px;max-width:260px;transform:translate(-50%,calc(-100% - 10px));white-space:normal;z-index:3}
+.tablebox{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:12.5px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font:500 10.5px/1.2 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);white-space:nowrap;position:sticky;top:0;background:var(--paper)}
+th button{all:unset;cursor:pointer}
+th button:focus-visible{outline:2px solid var(--accent)}
+th button[aria-pressed="true"]{color:var(--ink)}
+td.num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+th.num{text-align:right}
+tbody tr{cursor:pointer} tbody tr:hover,tbody tr.on{background:var(--accent-soft)}
+tr.far td{color:var(--ink3)}
+.pname{font-weight:600} .psub{display:block;color:var(--ink2);font-size:11.5px}
+.kind{display:inline-flex;align-items:center;gap:5px;font:500 10.5px/1 "IBM Plex Mono",monospace;color:var(--ink2);margin-right:6px;vertical-align:1px}
+.above{color:var(--ok)} .below{color:var(--bad)}
+.notes{font-size:12.5px;color:var(--ink2);margin:0;padding-left:18px;display:grid;gap:4px;max-width:110ch}
+.notes b{color:var(--ink)}
+.mk{cursor:pointer}
+.mk.on .body{stroke:var(--ink);stroke-width:3}
+.mk:focus-visible .body{stroke:var(--accent);stroke-width:3}
+.dot{cursor:pointer}
+a{color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){ tbody tr{transition:background .12s} }
+</style>
+
+<div class="wrap">
+  <header class="cart">
+    <div>
+      <div class="eyebrow">__EYEBROW__</div>
+      <h1>__H1__</h1>
+    </div>
+    <div class="meta">__META__</div>
+  </header>
+
+  <section class="panel" aria-labelledby="ovt">
+    <h3 id="ovt">Resumen · cuánto está cada uno sobre el mercado</h3>
+    <div class="tablebox"><table class="ov" id="ov"><thead><tr><th>Tipología</th><th class="num">Mercado</th><th class="num">Lista cliente</th><th class="num">Tu tasación</th><th style="min-width:280px">% sobre la mediana de mercado</th><th>Lectura</th></tr></thead><tbody id="ovrows"></tbody></table></div>
+    <div class="legend"><span style="color:var(--accent)">┃ Mercado (0%)</span><span><i class="sw" style="background:var(--bad);border-radius:50%"></i>Lista del cliente</span><span><i class="sw" style="background:var(--ink);border-radius:50%"></i>Tu tasación</span><span>Clic en una fila para ver su plano</span></div>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="Tipologías" id="tabs"></nav>
+
+  <section class="summary" id="summary" aria-label="Resumen de la tipología"></section>
+  <section class="verdict" id="verdict" aria-live="polite"></section>
+
+  <div class="grid">
+    <div class="panel mapbox">
+      <h3 id="maptitle">Plano</h3>
+      <svg id="map" viewBox="__VIEWBOX__" role="img" aria-label="Plano de ubicación de las muestras de la tipología seleccionada">
+        <defs><pattern id="waves" width="28" height="14" patternUnits="userSpaceOnUse"><path d="M0 10 Q7 5 14 10 T28 10" fill="none" stroke="var(--sea-ink)" stroke-opacity=".25" stroke-width="1"/></pattern></defs>
+        <rect x="-2000" y="-2000" width="5000" height="5000" fill="var(--land)"/>
+        <g id="base"></g><g id="rings"></g><g id="labels"></g><g id="markers"></g><g id="subject"></g><g id="callout"></g><g id="furniture"></g>
+      </svg>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--accent);border-radius:50%"></i>__SUBJECT__</span>
+        <span><i class="sw" style="background:var(--s-new);border-radius:50%"></i>Proyecto nuevo</span>
+        <span><i class="sw" style="background:var(--s-used)"></i>Usado (aviso)</span>
+        <span><i class="sw" style="background:var(--s-ref);transform:rotate(45deg) scale(.85)"></i>Ref. de tu informe</span>
+        <span>Anillos: __RINGS__</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Lista del cliente vs mercado vs tu tasación</h3>
+      <div class="chartbox" id="chart"></div>
+      <div class="legend" id="chartlegend"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3 id="tabletitle">Muestras</h3>
+    <div class="tablebox">
+      <table id="tbl">
+        <thead><tr>
+          <th>Muestra</th>
+          <th class="num"><button type="button" id="s-dist" data-k="dist" aria-pressed="true">Dist. ↑</button></th>
+          <th class="num">m² homol.</th>
+          <th class="num">UF publ.</th>
+          <th class="num">UF depto</th>
+          <th class="num"><button type="button" id="s-ufm2" data-k="ufm2" aria-pressed="false">UF/m²</button></th>
+          <th class="num">vs mercado</th><th>En muestra</th>
+          <th>Entrega / antig.</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <ul class="notes">__NOTES__</ul>
+</div>
+
+<script>
+const CFG=__CONFIG__;
+const BASE=__BASE__;
+(function(){
+const NS="http://www.w3.org/2000/svg";
+const el=(tag,attrs,parent,text)=>{const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(text!=null) e.textContent=text; parent&&parent.appendChild(e); return e;};
+const $=id=>document.getElementById(id);
+const fmt=(n,d=0)=>Number(n).toLocaleString("es-CL",{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtD=d=>d>=1000?(d/1000).toFixed(1).replace('.',',')+" km":(Math.round(d/10)*10)+" m";
+const halo={"paint-order":"stroke",stroke:"var(--land)","stroke-width":4,"stroke-linejoin":"round"};
+const KIND={proyecto:{label:"Proyecto nuevo",col:"var(--s-new)"},usado:{label:"Usado",col:"var(--s-used)"},ref:{label:"Ref. informe",col:"var(--s-ref)"}};
+const [SX,SY]=CFG.subject; const U=CFG.U;
+const VB=CFG.viewBox.split(" ").map(Number);
+const inView=(x,y)=>x>=VB[0]-5&&x<=VB[0]+VB[2]+5&&y>=VB[1]-5&&y<=VB[1]+VB[3]+5;
+
+// ---------- base map ----------
+const base=$("base");
+const road=(d,w,c)=>{ if(!d) return; el("path",{d,fill:"none",stroke:c,"stroke-width":w,"stroke-linecap":"round","stroke-linejoin":"round"},base); };
+if(BASE.COAST){ const sea=BASE.COAST+"L-600 2056L-600 -352Z"; el("path",{d:sea,fill:"var(--sea)"},base); el("path",{d:sea,fill:"url(#waves)"},base); el("path",{d:BASE.COAST,fill:"none",stroke:"var(--sea-ink)","stroke-width":1.5,"stroke-opacity":.6},base); }
+const sw=CFG.roadScale||1;
+road(BASE.MINOR,4*sw,"var(--st-case)"); road(BASE.MID,7*sw,"var(--st-case)"); road(BASE.MAJOR,10*sw,"var(--st-case)");
+road(BASE.MINOR,2.4*sw,"var(--st-minor)"); road(BASE.MID,5*sw,"var(--st-major)"); road(BASE.MAJOR,7.5*sw,"var(--st-major)");
+if(BASE.SUBWAY) el("path",{d:BASE.SUBWAY,fill:"none",stroke:"var(--accent)","stroke-width":2,"stroke-opacity":.5,"stroke-dasharray":"8 4"},base);
+const lab=$("labels");
+(CFG.labels||[]).forEach(l=>{ el("text",Object.assign({x:l.x,y:l.y,transform:l.r?`rotate(${l.r} ${l.x} ${l.y})`:"","text-anchor":"middle",fill:l.sea?"var(--sea-ink)":"var(--ink2)","font-family":"IBM Plex Sans, system-ui, sans-serif","font-size":l.s||11,"font-weight":l.sea?400:500,"font-style":l.sea?"italic":"normal","letter-spacing":".05em"},l.sea?{}:halo),lab,l.t); });
+(BASE.STATIONS||[]).forEach(([n,x,y])=>{ el("circle",{cx:x,cy:y,r:5,fill:"var(--paper)",stroke:"var(--accent)","stroke-width":2.5},lab); el("text",Object.assign({x:x+8,y:y-7,fill:"var(--accent)","font-family":"IBM Plex Sans, system-ui, sans-serif","font-size":10.5,"font-weight":600},halo),lab,"Ⓜ "+n); });
+if(CFG.faro){ const [fx,fy]=CFG.faro; el("path",{d:`M${fx} ${fy-16} L${fx+7} ${fy+8} L${fx-7} ${fy+8} Z`,fill:"var(--ink)"},lab); el("text",Object.assign({x:fx,y:fy+26,"text-anchor":"middle",fill:"var(--ink)","font-family":"IBM Plex Sans, sans-serif","font-size":12,"font-weight":600},halo),lab,"FARO"); }
+const rg=$("rings");
+CFG.rings.forEach(m=>{const r=m/U; el("circle",{cx:SX,cy:SY,r,fill:"none",stroke:"var(--accent)","stroke-width":1.3,"stroke-dasharray":"5 5","stroke-opacity":.5},rg); el("text",Object.assign({x:SX+r*.707+3,y:SY+r*.707+12,fill:"var(--accent)","font-family":"IBM Plex Mono, monospace","font-size":CFG.ringFont||11},halo),rg,m>=1000?(m/1000).toString().replace('.',',')+" km":m+" m");});
+const sg=$("subject");
+el("circle",{cx:SX,cy:SY,r:CFG.subjR||11,fill:"var(--accent)",stroke:"var(--paper)","stroke-width":3},sg);
+el("path",{d:`M${SX} ${SY-5} L${SX+5} ${SY} L${SX} ${SY+5} L${SX-5} ${SY} Z`,fill:"var(--paper)"},sg);
+el("text",Object.assign({x:SX+CFG.subjLabel[0],y:SY+CFG.subjLabel[1],"text-anchor":CFG.subjLabel[2],fill:"var(--accent)","font-family":"Barlow Condensed, Arial Narrow, sans-serif","font-size":CFG.subjFont||19,"font-weight":700},halo,{"stroke-width":5}),sg,CFG.subjectName.toUpperCase());
+// furniture: north + scale
+const fu=$("furniture"); const [nx,ny]=CFG.north;
+el("circle",{cx:nx,cy:ny,r:18,fill:"var(--paper)",stroke:"var(--rule)","stroke-width":1.5},fu);
+el("path",{d:`M${nx} ${ny-12} L${nx+6} ${ny+7} L${nx} ${ny+3} L${nx-6} ${ny+7} Z`,fill:"var(--ink)"},fu);
+const [bx,by]=CFG.scaleAt; const seg=250/U;
+el("rect",{x:bx-10,y:by-22,width:seg*2+46,height:36,fill:"var(--paper)",stroke:"var(--rule)","stroke-width":1},fu);
+el("rect",{x:bx,y:by,width:seg,height:5,fill:"var(--ink)"},fu); el("rect",{x:bx+seg,y:by,width:seg,height:5,fill:"var(--paper)",stroke:"var(--ink)","stroke-width":1},fu);
+[["0",0],["250",seg],["500 m",seg*2]].forEach(([t,dx])=>el("text",{x:bx+dx,y:by-6,"text-anchor":"middle",fill:"var(--ink)","font-family":"IBM Plex Mono, monospace","font-size":10.5},fu,t));
+
+// ---------- state ----------
+let cur=CFG.tipos[0].key, sortKey="dist", selected=null;
+const tipo=()=>CFG.tipos.find(t=>t.key===cur);
+const samples=()=>CFG.samples.filter(s=>s.tipo===cur);
+const median=a=>{const v=[...a].sort((x,y)=>x-y); const m=Math.floor(v.length/2); return v.length?(v.length%2?v[m]:(v[m-1]+v[m])/2):null;};
+
+// tabs
+const tabs=$("tabs");
+CFG.tipos.forEach(t=>{ const b=document.createElement("button"); b.type="button"; b.role="tab"; b.id="tab-"+t.key; b.setAttribute("aria-selected",String(t.key===cur));
+  b.innerHTML=`${t.label} <span class="pill lvl-${t.level}">${t.levelLabel}</span>`; b.addEventListener("click",()=>{cur=t.key; selected=null; render();}); tabs.appendChild(b); });
+
+// overview
+(function(){
+  const tb=document.getElementById("ovrows"); const lo=-15, hi=40, W=280, H=30, X=v=>6+(Math.max(lo,Math.min(hi,v))-lo)/(hi-lo)*(W-12);
+  CFG.tipos.forEach(t=>{ const M=t.market; const dL=(t.lista/M.med-1)*100, dT=(t.tasado/M.med-1)*100;
+    const tr=document.createElement("tr"); tr.dataset.k=t.key; tr.style.cursor="pointer";
+    let ticks=""; for(let v=-10; v<=40; v+=10){ ticks+=`<line x1="${X(v)}" x2="${X(v)}" y1="4" y2="${H-10}" stroke="var(--rule)"/>`+`<text x="${X(v)}" y="${H}" text-anchor="middle" font-size="8.5" font-family="IBM Plex Mono, monospace" fill="var(--ink3)">${v>0?"+":""}${v}%</text>`; }
+    const svg=`<svg viewBox="0 0 ${W} ${H+2}" width="100%" style="max-width:${W}px;display:block" role="img" aria-label="Lista ${fmt(dL,0)}% y tasación ${fmt(dT,0)}% respecto del mercado">${ticks}
+      <line x1="${X(dT)}" x2="${X(dL)}" y1="12" y2="12" stroke="var(--ink3)" stroke-width="2"/>
+      <line x1="${X(0)}" x2="${X(0)}" y1="2" y2="${H-8}" stroke="var(--accent)" stroke-width="3"/>
+      <circle cx="${X(dT)}" cy="12" r="6" fill="var(--ink)" stroke="var(--paper)" stroke-width="2"/>
+      <circle cx="${X(dL)}" cy="12" r="6" fill="var(--bad)" stroke="var(--paper)" stroke-width="2"/></svg>`;
+    tr.innerHTML=`<td><b>${t.label}</b></td><td class="num">${fmt(M.med,1)}</td><td class="num">${fmt(t.lista,1)} <span class="pc" style="color:var(--bad)">(${dL>=0?"+":""}${fmt(dL,Math.abs(dL)<1?1:0)}%)</span></td><td class="num">${fmt(t.tasado,1)} <span class="pc">(${dT>=0?"+":""}${fmt(dT,1)}%)</span></td><td>${svg}</td><td class="lect">${t.reading}</td>`;
+    tr.addEventListener("click",()=>{cur=t.key; selected=null; render(); document.getElementById("tabs").scrollIntoView({behavior:"smooth",block:"start"});});
+    tb.appendChild(tr); });
+})();
+
+// shapes
+function shape(g,kind,x,y,r,cls){
+  if(kind==="usado") return el("rect",{class:cls,x:x-r,y:y-r,width:r*2,height:r*2,rx:1.5,fill:KIND.usado.col,stroke:"var(--paper)","stroke-width":2},g);
+  if(kind==="ref") return el("path",{class:cls,d:`M${x} ${y-r*1.3} L${x+r*1.3} ${y} L${x} ${y+r*1.3} L${x-r*1.3} ${y} Z`,fill:KIND.ref.col,stroke:"var(--paper)","stroke-width":2},g);
+  return el("circle",{class:cls,cx:x,cy:y,r:r,fill:KIND.proyecto.col,stroke:"var(--paper)","stroke-width":2},g);
+}
+
+function render(){
+  const t=tipo(); const S=samples(); const R=CFG.radius;
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.id==="tab-"+cur)));
+  document.querySelectorAll("#ovrows tr").forEach(r=>r.classList.toggle("on",r.dataset.k===cur));
+  const near=S.filter(s=>s.dist<=R);
+  const nNew=near.filter(s=>s.kind!=="usado").map(s=>s.ufm2), nUsed=near.filter(s=>s.kind==="usado").map(s=>s.ufm2);
+  const mNew=median(nNew), mUsed=median(nUsed);
+  // summary
+  const M=t.market; const dL=(t.lista/M.med-1)*100, dT=(t.tasado/M.med-1)*100;
+  const inBand=t.tasado>=M.p25&&t.tasado<=M.p75;
+  const sug=M.med*t.sup, adjTot=(M.med-t.tasado)*t.sup*t.units;
+  $("summary").innerHTML=`
+   <div class="card mkt"><div class="k">Muestra de mercado · ${t.label}</div><div class="v">${fmt(M.med,1)}</div><div class="s">mediana UF/m² · banda ${fmt(M.p25,1)}–${fmt(M.p75,1)} · n ${M.n}<br>${M.rule}</div></div>
+   <div class="card"><div class="k">Lista del cliente</div><div class="v">${fmt(t.lista,1)}</div><div class="d ${dL>3?"good":"neu"}">${dL>=0?"+":""}${fmt(dL,1)}% sobre mercado</div><div class="s">${t.lista>M.p75?"sobre el 75% de la muestra":"dentro de la banda de mercado"}</div></div>
+   <div class="card"><div class="k">Tu tasación</div><div class="v">${fmt(t.tasado,1)}</div><div class="d ${Math.abs(dT)<=3?"good":"badc"}">${dT>=0?"+":""}${fmt(dT,1)}% vs mercado</div><div class="s">${inBand?"dentro de la banda":"fuera de la banda"} · rango ${fmt(t.tmin,1)}–${fmt(t.tmax,1)} · ${t.units} unid.</div></div>
+   <div class="card"><div class="k">Tu corrección a la lista</div><div class="v">${t.lista>t.tasado?"−"+fmt((1-t.tasado/t.lista)*100,1)+"%":"0%"}</div><div class="s">${t.lista-M.med>1?(t.lista>t.tasado?`rebajas la lista y descuentas ${fmt(Math.min(100,(t.lista-t.tasado)/(t.lista-M.med)*100),0)}% del sobreprecio del cliente`:"no descuentas el sobreprecio"):"la lista ya está en mercado"}</div></div>`;
+  $("verdict").innerHTML=`<div class="head"><span class="badge lvl-${t.level}">${t.levelLabel}</span><h2>${t.title}</h2></div><ul>${t.points.map(p=>`<li>${p}</li>`).join("")}</ul>`;
+  $("maptitle").textContent=`Plano · ${t.label} · ${S.length} muestras`;
+  $("tabletitle").textContent=`Muestras · ${t.label}`;
+  drawMarkers(S); drawChart(S,t); drawTable(S,t);
+}
+
+function drawMarkers(S){
+  const mk=$("markers"); mk.innerHTML=""; $("callout").innerHTML="";
+  const groups={};
+  S.forEach(s=>{ if(!inView(s.x,s.y)) return; const k=Math.round(s.x/3)+","+Math.round(s.y/3); (groups[k]=groups[k]||[]).push(s); });
+  const r=CFG.markR||6.5;
+  Object.values(groups).forEach(g=>{
+    g.forEach((s,i)=>{
+      let x=s.x,y=s.y; if(g.length>1){ const a=i*2.4, rr=(r*1.5)*Math.sqrt(i+ (i?0.6:0)); x+=Math.cos(a)*rr; y+=Math.sin(a)*rr; }
+      s._mx=x; s._my=y;
+      const grp=el("g",{class:"mk","data-id":s.uid,tabindex:0,role:"button","aria-label":`${s.name}, ${fmt(s.ufm2,1)} UF por m²`},mk);
+      shape(grp,s.kind,x,y,r,"body");
+      grp.addEventListener("click",()=>select(s.uid)); grp.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();select(s.uid);}});
+    });
+  });
+  // permanent labels for new projects & refs (one per project name)
+  const done=new Set();
+  S.filter(s=>s.kind!=="usado"&&inView(s.x,s.y)).sort((a,b)=>a.dist-b.dist).forEach(s=>{
+    if(done.has(s.name)) return; done.add(s.name);
+    const vals=S.filter(q=>q.name===s.name&&q.kind===s.kind).map(q=>q.ufm2);
+    const txt=vals.length>1?`${fmt(Math.min(...vals),0)}–${fmt(Math.max(...vals),0)}`:fmt(vals[0],0);
+    const off=(CFG.labelOff||{})[s.name]||[10,-9,"start"];
+    el("text",Object.assign({x:s._mx+off[0],y:s._my+off[1],"text-anchor":off[2],"font-family":"IBM Plex Sans, system-ui, sans-serif","font-size":CFG.lblFont||11.5,"font-weight":600,fill:"var(--ink)","pointer-events":"none"},halo),$("markers"),`${s.short||s.name} · ${txt}`);
+  });
+  if(selected) select(selected,true);
+}
+
+function select(uid,silent){
+  selected=uid;
+  document.querySelectorAll(".mk").forEach(g=>g.classList.toggle("on",g.dataset.id===uid));
+  const g=document.querySelector(`.mk[data-id="${uid}"]`); if(g) g.parentNode.appendChild(g);
+  document.querySelectorAll("#rows tr").forEach(tr=>tr.classList.toggle("on",tr.dataset.id===uid));
+  document.querySelectorAll(".dot").forEach(d=>{const on=d.dataset.id===uid; d.setAttribute("stroke",on?"var(--ink)":"var(--paper)"); d.setAttribute("stroke-width",on?3:1.5); if(on) d.parentNode.appendChild(d);});
+  const co=$("callout"); co.innerHTML="";
+  const s=CFG.samples.find(q=>q.uid===uid); if(!s||s._mx==null||!inView(s.x,s.y)) return;
+  const left=s._mx>VB[0]+VB[2]*0.6;
+  const tx=s._mx+(left?-14:14), ty=s._my-14;
+  const t=el("text",Object.assign({x:tx,y:ty,"text-anchor":left?"end":"start","font-family":"IBM Plex Sans, sans-serif","font-size":CFG.lblFont?CFG.lblFont+1:12.5,"font-weight":600,fill:"var(--ink)"},halo,{"stroke-width":5}),co);
+  el("tspan",{},t,s.name.length>34?s.name.slice(0,33)+"…":s.name);
+  el("tspan",{x:tx,dy:15,"font-family":"IBM Plex Mono, monospace","font-weight":500},t,`${fmt(s.ufm2,1)} UF/m² · ${fmtD(s.dist)}`);
+}
+
+function drawChart(S,t){
+  const box=$("chart"); box.innerHTML="";
+  const rows=[["proyecto","Proyectos nuevos"],["ref","Refs. informe"],["usado","Usados"]].filter(([k])=>S.some(s=>s.kind===k));
+  const W=640, padL=118, padR=18, rowH=54, top=46, H=top+rows.length*rowH+34;
+  const vals=S.map(s=>s.ufm2).concat([t.tasado,t.lista,t.market.p25,t.market.p75]);
+  let lo=Math.floor((Math.min(...vals)-3)/5)*5, hi=Math.ceil((Math.max(...vals)+3)/5)*5;
+  const X=v=>padL+(v-lo)/(hi-lo)*(W-padL-padR);
+  const svg=el("svg",{viewBox:`0 0 ${W} ${H}`,role:"img","aria-label":`Distribución de UF por m² de las muestras ${t.label} frente al valor tasado`},box);
+  // grid
+  for(let v=lo; v<=hi; v+=5){ el("line",{x1:X(v),x2:X(v),y1:top-6,y2:H-28,stroke:"var(--rule)","stroke-width":1},svg); if(v%10===0) el("text",{x:X(v),y:H-12,"text-anchor":"middle",fill:"var(--ink2)","font-family":"IBM Plex Mono, monospace","font-size":11},svg,v); }
+  el("text",{x:8,y:12,"text-anchor":"start",fill:"var(--ink3)","font-family":"IBM Plex Mono, monospace","font-size":10.5},svg,"UF/m² homologado →");
+  const M=t.market, bh=rows.length*rowH;
+  el("rect",{x:X(M.p25),y:top-6,width:Math.max(2,X(M.p75)-X(M.p25)),height:bh+6,fill:"var(--accent-soft)"},svg);
+  el("line",{x1:X(M.med),x2:X(M.med),y1:top-6,y2:top+bh,stroke:"var(--accent)","stroke-width":3},svg);
+  const labs=[[X(M.med),`Mercado ${fmt(M.med,1)}`,"var(--accent)"],[X(t.tasado),`Tasado ${fmt(t.tasado,1)}`,"var(--ink)"],[X(t.lista),`Lista ${fmt(t.lista,1)}`,"var(--bad)"]].sort((p,q)=>p[0]-q[0]);
+  el("line",{x1:X(t.tasado),x2:X(t.tasado),y1:top-6,y2:top+bh,stroke:"var(--ink)","stroke-width":2},svg);
+  el("line",{x1:X(t.lista),x2:X(t.lista),y1:top-6,y2:top+bh,stroke:"var(--bad)","stroke-width":2,"stroke-dasharray":"5 3"},svg);
+  // stagger labels on two lines above plot
+  let lastX=-999, lvl=0;
+  labs.forEach(([x,txt,col])=>{ lvl=(x-lastX<86)?(lvl+1)%2:0; lastX=x; el("text",{x:Math.min(Math.max(x,padL+30),W-40),y:top-12-lvl*13,"text-anchor":"middle",fill:col,"font-family":"IBM Plex Mono, monospace","font-size":11,"font-weight":600},svg,txt); });
+  const R=CFG.radius;
+  rows.forEach(([k,label],i)=>{
+    const cy=top+i*rowH+rowH/2;
+    el("line",{x1:padL,x2:W-padR,y1:cy,y2:cy,stroke:"var(--rule)","stroke-width":1},svg);
+    el("text",{x:8,y:cy-2,fill:"var(--ink)","font-family":"IBM Plex Sans, sans-serif","font-size":12.5,"font-weight":600},svg,label);
+    const pts=S.filter(s=>s.kind===k); const m=null;
+    el("text",{x:8,y:cy+14,fill:"var(--ink2)","font-family":"IBM Plex Mono, monospace","font-size":10.5},svg,`n ${pts.length} · en muestra ${pts.filter(p=>t.market.uids.includes(p.uid)).length}`);
+    if(m!=null){ el("line",{x1:X(m),x2:X(m),y1:cy-16,y2:cy+16,stroke:KIND[k].col,"stroke-width":3,"stroke-linecap":"round"},svg); }
+    // jitter by beeswarm-ish
+    const placed=[];
+    pts.sort((a,b)=>a.ufm2-b.ufm2).forEach(s=>{
+      const x=X(s.ufm2); let dy=0, tries=0; const r=5.5;
+      while(placed.some(p=>Math.abs(p.x-x)<r*2&&Math.abs(p.dy-dy)<r*2)&&tries<12){ tries++; dy=(tries%2?1:-1)*Math.ceil(tries/2)*(r*1.6); }
+      placed.push({x,dy});
+      const far=!t.market.uids.includes(s.uid);
+      const d= s.kind==="usado"? el("rect",{class:"dot","data-id":s.uid,x:x-r,y:cy+dy-r,width:r*2,height:r*2,rx:1.5,fill:far?"var(--paper)":KIND.usado.col,stroke:far?KIND.usado.col:"var(--paper)","stroke-width":1.5},svg)
+        : s.kind==="ref"? el("path",{class:"dot","data-id":s.uid,d:`M${x} ${cy+dy-r*1.3} L${x+r*1.3} ${cy+dy} L${x} ${cy+dy+r*1.3} L${x-r*1.3} ${cy+dy} Z`,fill:far?"var(--paper)":KIND.ref.col,stroke:far?KIND.ref.col:"var(--paper)","stroke-width":1.5},svg)
+        : el("circle",{class:"dot","data-id":s.uid,cx:x,cy:cy+dy,r:r,fill:far?"var(--paper)":KIND.proyecto.col,stroke:far?KIND.proyecto.col:"var(--paper)","stroke-width":1.5},svg);
+      if(far){ d.setAttribute("stroke-width",2); }
+      d.addEventListener("mouseenter",()=>tip(s,x,cy+dy,svg)); d.addEventListener("mouseleave",()=>untip()); d.addEventListener("click",()=>select(s.uid));
+    });
+  });
+  $("chartlegend").innerHTML=`<span><i class="sw" style="background:var(--accent-soft);box-shadow:none;border:0"></i>Banda de mercado (P25–P75)</span><span style="color:var(--accent)">━ Mediana de mercado</span><span>━ Tu tasación</span><span style="color:var(--bad)">┅ Lista del cliente</span><span><i class="sw" style="background:var(--paper);border:2px solid var(--ink3);box-shadow:none;border-radius:50%"></i>Fuera de la muestra (solo contexto)</span>`;
+}
+let tipEl=null;
+function tip(s,x,y,svg){ untip(); const box=$("chart"); const r=svg.getBoundingClientRect(), br=box.getBoundingClientRect(); const sc=r.width/640;
+  tipEl=document.createElement("div"); tipEl.className="tip"; tipEl.style.left=(r.left-br.left+x*sc)+"px"; tipEl.style.top=(r.top-br.top+y*sc)+"px";
+  tipEl.innerHTML=`<b>${s.name}</b><br>${fmt(s.ufm2,1)} UF/m² · ${fmt(s.sup,1)} m² · UF ${fmt(s.uf)}<br>${fmtD(s.dist)} · ${KIND[s.kind].label}`; box.appendChild(tipEl); }
+function untip(){ if(tipEl){tipEl.remove(); tipEl=null;} }
+
+function drawTable(S,t){
+  const rows=$("rows"); rows.innerHTML="";
+  const list=[...S].sort((a,b)=>a[sortKey]-b[sortKey]);
+  list.forEach(s=>{
+    const tr=document.createElement("tr"); tr.dataset.id=s.uid; tr.tabIndex=0; const inM=t.market.uids.includes(s.uid); if(!inM) tr.classList.add("far");
+    const diff=(s.ufm2/t.market.med-1)*100;
+    const kindIcon=s.kind==="usado"?`<svg width="10" height="10"><rect x="1" y="1" width="8" height="8" rx="1" fill="${KIND.usado.col}"/></svg>`:s.kind==="ref"?`<svg width="11" height="11"><path d="M5.5 0.5 L10.5 5.5 L5.5 10.5 L0.5 5.5Z" fill="${KIND.ref.col}"/></svg>`:`<svg width="10" height="10"><circle cx="5" cy="5" r="4.5" fill="${KIND.proyecto.col}"/></svg>`;
+    const sub=[s.dev, s.modelo?("Modelo "+s.modelo):"", `${fmt(s.util,1)} m² útil + ${fmt(s.terr,1)} terr.`, s.adj?`desc. ${s.adj} UF est/bod`:"", s.nota||"", s.url?`<a href="${s.url}" target="_blank" rel="noopener">${s.id}</a>`:(s.fuente||"")].filter(Boolean).join(" · ");
+    tr.innerHTML=`<td><span class="kind">${kindIcon}${KIND[s.kind].label}</span><span class="pname">${s.name}</span><span class="psub">${sub}</span></td>
+      <td class="num">${fmtD(s.dist)}</td><td class="num">${fmt(s.sup,1)}</td><td class="num">${fmt(s.uf_pub)}</td><td class="num">${fmt(s.uf)}</td>
+      <td class="num"><b>${fmt(s.ufm2,1)}</b></td><td class="num">${diff>=0?"+":""}${fmt(diff,0)}%</td><td>${inM?'<span class="inmk">✓ sí</span>':'—'}</td><td>${s.entrega||s.age||"—"}</td>`;
+    tr.addEventListener("click",e=>{ if(e.target.tagName!=="A") select(s.uid);}); tr.addEventListener("keydown",e=>{if(e.key==="Enter")select(s.uid);});
+    rows.appendChild(tr);
+  });
+  if(selected) select(selected,true);
+}
+document.querySelectorAll("th button").forEach(b=>b.addEventListener("click",()=>{ sortKey=b.dataset.k; document.querySelectorAll("th button").forEach(x=>{x.setAttribute("aria-pressed",String(x===b)); x.textContent=x.dataset.k==="dist"?"Dist.":"UF/m²";}); b.textContent+=" ↑"; drawTable(samples(),tipo()); }));
+render();
+})();
+</script>

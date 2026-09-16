@@ -26,6 +26,10 @@ export const APP_MODULES = [
   // puede tener sentido dárselo a alguien en terreno (quien redacta el RDI)
   // sin necesariamente darle todo Control.
   { id: 'rdi', title: 'RDI', desc: 'Requerimientos de información al mandante y tiempos de respuesta' },
+  // Módulo bancario (tasaciones), sin relación con las "obras" de
+  // construcción de arriba — permiso propio porque no tiene sentido para
+  // el equipo de terreno.
+  { id: 'estudio-mercado', title: 'Estudio de mercado', desc: 'Defensa de tasación: mercado por tipología, plano y comparables' },
 ];
 
 const CACHE_KEY = 'control-permissions-cache-v1';

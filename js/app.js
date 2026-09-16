@@ -28,6 +28,8 @@ import { renderCostosReembolsosView } from './views/costosReembolsosView.js';
 import { renderPermissionsAdminView } from './views/permissionsAdminView.js';
 import { renderBancoHomeView } from './views/bancoHomeView.js';
 import { renderProyectosHomeView } from './views/proyectosHomeView.js';
+import { renderTasacionHomeView } from './views/tasacionHomeView.js';
+import { renderTasacionEstudioView } from './views/tasacionEstudioView.js';
 
 const appEl = document.getElementById('app');
 
@@ -43,6 +45,10 @@ registerRoute('/proyectos', () => renderProyectosHomeView(appEl));
 // interna sigue siendo /fotos — solo cambió el nombre que ve el usuario.
 registerRoute('/fotos', () => renderFoldersView(appEl, ROOT_ID));
 registerRoute('/fotos/folder/:id', ({ id }) => renderFoldersView(appEl, id));
+
+// Módulo Estudio de mercado (Banco): defensa de tasación por tipología.
+registerRoute('/banco/estudio-mercado', () => renderTasacionHomeView(appEl));
+registerRoute('/banco/estudio-mercado/:id', ({ id }) => renderTasacionEstudioView(appEl, id));
 registerRoute('/fotos/camera/:folderId', ({ folderId }) => renderCameraView(appEl, folderId === 'root' ? ROOT_ID : folderId));
 registerRoute('/fotos/photo/:id', ({ id }) => renderPhotoView(appEl, id));
 

@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -165,6 +165,15 @@ function openDB() {
       // lista larga, no un puñado de números.
       if (!db.objectStoreNames.contains('costosPresupuestoDetalle')) {
         db.createObjectStore('costosPresupuestoDetalle', { keyPath: 'obraId' });
+      }
+
+      // Módulo Banco → Estudio de mercado (v11): tasaciones bancarias, no
+      // tiene nada que ver con las "obras" de construcción de arriba (no
+      // cuelga de by_obraId) — cada registro es un informe de tasación
+      // completo (importado desde el Excel del banco), con sus tipologías
+      // y su pool de muestras de mercado (propias + encontradas/pegadas).
+      if (!db.objectStoreNames.contains('tasacionEstudios')) {
+        db.createObjectStore('tasacionEstudios', { keyPath: 'id' });
       }
     };
 
@@ -1315,4 +1324,73 @@ export async function getChecklistPhotosInRange(obraId, fromDate, toDate) {
   const inRange = entries.filter((e) => e.date >= fromDate && e.date <= toDate);
   const photosByEntry = await Promise.all(inRange.map((e) => getChecklistPhotosByEntry(e.id)));
   return photosByEntry.flat().sort((a, b) => a.createdAt - b.createdAt);
+}
+
+// ---------- Banco: Estudio de mercado (tasaciones) ----------
+//
+// Un registro por informe de tasación importado (no por obra de
+// construcción — son cosas distintas). Guarda lo leído del Excel
+// (tipologías, tasado/lista) más el pool de muestras de mercado: las que
+// ya traía el propio informe (`origen:'ref-tipologia'`), más las que se
+// vayan agregando después pegando un link o por búsqueda automática
+// (Etapa 2), cada una con su propio estado de revisión.
+
+export async function createTasacionEstudio({ ao = '', nombreProyecto = '', direccion = '', comuna = '', region = '', fechaVisita = '', ufTasacionFecha = null, tipologias = [], muestras = [], sourceFileName = '', sourceFileId = '', driveFolderId = null, driveFolderName = null }) {
+  const store = await tx('tasacionEstudios', 'readwrite');
+  const now = Date.now();
+  const estudio = {
+    id: uuid(),
+    ao,
+    nombreProyecto,
+    direccion,
+    comuna,
+    region,
+    fechaVisita, // 'YYYY-MM-DD'
+    ufTasacionFecha, // UF vigente el día de la visita (histórica, del propio Excel)
+    // UF "de hoy" para tasar muestras nuevas que se agreguen en pesos —
+    // se busca sola (mindicador.cl) pero queda editable a mano.
+    ufHoy: null,
+    ufHoyFecha: null,
+    subjectLat: null,
+    subjectLon: null,
+    // [{ tipo, unidades, supHomologadaProm, tasadoUFm2Prom, listaUFm2Prom }]
+    tipologias,
+    // [{ id, tipo, origen:'ref-tipologia'|'pegado'|'auto', direccion, calidad,
+    //    m2Const, ufm2, valorTotal, link, lat, lon, dist,
+    //    estado:'pendiente'|'aprobada'|'descartada' }]
+    muestras,
+    sourceFileName,
+    sourceFileId,
+    driveFolderId,
+    driveFolderName,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await wrap(store.add(estudio));
+  return estudio;
+}
+
+export async function getTasacionEstudio(id) {
+  const store = await tx('tasacionEstudios', 'readonly');
+  return wrap(store.get(id));
+}
+
+export async function getAllTasacionEstudios() {
+  const store = await tx('tasacionEstudios', 'readonly');
+  const all = await wrap(store.getAll());
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function updateTasacionEstudio(id, changes) {
+  const store = await tx('tasacionEstudios', 'readwrite');
+  const estudio = await wrap(store.get(id));
+  if (!estudio) return null;
+  Object.assign(estudio, changes, { updatedAt: Date.now() });
+  await wrap(store.put(estudio));
+  return estudio;
+}
+
+export async function deleteTasacionEstudio(id) {
+  const store = await tx('tasacionEstudios', 'readwrite');
+  await wrap(store.delete(id));
 }

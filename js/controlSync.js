@@ -1,15 +1,13 @@
 // Sincronización de Personal (SSMA) y Checklist diario entre los teléfonos
 // de todo el equipo, vía una carpeta de Drive compartida por obra — mismo
 // mecanismo que ya usa Avance programado, pero en las dos direcciones:
-// cada guardado sube un .json a Drive, y cada apertura trae los que falten.
-//
-// Un archivo nuevo por guardado (no se actualiza uno existente) — más
-// simple que rastrear un id de archivo a reemplazar. Si hay más de un
-// archivo para el mismo día (dos personas guardaron el mismo día), se usa
+// cada guardado sube/reemplaza un .json en Drive, y cada apertura trae los
+// que falten. Un solo archivo vigente por registro (día+tipo, o día para
+// Personal) — si dos personas guardan el mismo día, al sincronizar se usa
 // el que tenga el "updatedAt" más nuevo adentro, no el que se subió último
-// a Drive — evita pisar un cambio más nuevo con uno viejo que tardó en
+// a Drive, para no pisar un cambio más nuevo con uno viejo que tardó en
 // subir por mala señal.
-import { listDriveJSONFiles, listDriveScheduleFiles, listDriveFiles, listDriveFolders, findOrCreateDriveFolder, findFileByName, updateFileContent, downloadDriveFile, uploadFile, uploadJSON } from './googleDrive.js';
+import { listDriveJSONFiles, listDriveScheduleFiles, listDriveFiles, listDriveFolders, findOrCreateDriveFolder, findFileByName, updateFileContent, downloadDriveFile, uploadFile } from './googleDrive.js';
 import { DEFAULT_CHECKLIST_TYPES } from './controlChecklistTemplates.js';
 import {
   getSSMAEntryByObraAndDate,
@@ -81,6 +79,17 @@ export async function syncAvanceFromDrive(obraId, folderId, scheduleType = 'real
 async function readJSONFile(fileId) {
   const blob = await downloadDriveFile(fileId);
   return JSON.parse(await blob.text());
+}
+
+// Los .json "de datos" del checklist (plantillas de ítems + un registro por
+// día) van en esta subcarpeta, no sueltos en la raíz de "CHECKLIST DIARIO"
+// — para que ahí Pancho solo vea las carpetas de Tipo (SSMA/Faenas/
+// Programación, con las fotos y el PDF de respaldo legible) y nunca tenga
+// que mirar estos archivos técnicos, que solo la app necesita para
+// sincronizar entre teléfonos.
+const CHECKLIST_DATA_SUBFOLDER = 'DATOS INTERNOS (no abrir)';
+async function getChecklistDataFolder(folderId) {
+  return findOrCreateDriveFolder(folderId, CHECKLIST_DATA_SUBFOLDER);
 }
 
 /** Sube un JSON a Drive reemplazando el archivo existente de ese nombre si
@@ -171,7 +180,8 @@ export async function syncSSMAFromDrive(obraId, folderId) {
 export async function uploadChecklistType(folderId, type) {
   if (!folderId) return false;
   try {
-    await uploadOrReplaceJSON(folderId, `checklist-type-${type.key}.json`, {
+    const dataFolder = await getChecklistDataFolder(folderId);
+    await uploadOrReplaceJSON(dataFolder.id, `checklist-type-${type.key}.json`, {
       key: type.key,
       title: type.title,
       items: type.items,
@@ -193,11 +203,12 @@ export async function syncChecklistTypesFromDrive(obraId, folderId) {
     types = await Promise.all(DEFAULT_CHECKLIST_TYPES.map((t, i) => createChecklistType({ obraId, order: i, ...t })));
   }
 
+  const dataFolder = await getChecklistDataFolder(folderId);
   let changed = 0;
   await Promise.all(
     types.map(async (type) => {
       try {
-        const file = await findFileByName(folderId, `checklist-type-${type.key}.json`);
+        const file = await findFileByName(dataFolder.id, `checklist-type-${type.key}.json`);
         if (!file) return;
         const data = await readJSONFile(file.id);
         if ((data.updatedAt || 0) > (type.updatedAt || 0)) {
@@ -225,7 +236,8 @@ export async function syncChecklistTypesFromDrive(obraId, folderId) {
 export async function uploadChecklistEntry(folderId, typeKey, entry) {
   if (!folderId) return false;
   try {
-    await uploadOrReplaceJSON(folderId, `${typeKey}-${entry.date}.json`, {
+    const dataFolder = await getChecklistDataFolder(folderId);
+    await uploadOrReplaceJSON(dataFolder.id, `${typeKey}-${entry.date}.json`, {
       typeKey,
       date: entry.date,
       items: entry.items,
@@ -251,7 +263,8 @@ export async function syncChecklistFromDrive(obraId, folderId) {
     types = await Promise.all(DEFAULT_CHECKLIST_TYPES.map((t, i) => createChecklistType({ obraId, order: i, ...t })));
   }
 
-  const files = await listDriveJSONFiles(folderId);
+  const dataFolder = await getChecklistDataFolder(folderId);
+  const files = await listDriveJSONFiles(dataFolder.id);
   const latestByName = new Map();
   for (const f of files) {
     const name = f.name.replace(/\.json$/i, '');

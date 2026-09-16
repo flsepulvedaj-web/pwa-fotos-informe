@@ -83,6 +83,21 @@ async function readJSONFile(fileId) {
   return JSON.parse(await blob.text());
 }
 
+/** Sube un JSON a Drive reemplazando el archivo existente de ese nombre si
+ * ya hay uno, en vez de acumular un archivo nuevo por cada guardado (eso es
+ * lo que hacía `uploadJSON` antes, y con meses de uso real terminó llenando
+ * las carpetas de Personal/Checklist con decenas de copias del mismo día —
+ * Pancho lo notó al mirar el Drive directamente). */
+async function uploadOrReplaceJSON(folderId, filename, data) {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const existing = await findFileByName(folderId, filename);
+  if (existing) {
+    await updateFileContent(existing.id, blob);
+  } else {
+    await uploadFile(folderId, blob, filename);
+  }
+}
+
 /** Sube (best-effort) el registro de Personal de un día a Drive. No lanza
  * error si falla — el guardado local ya se hizo, esto es solo el respaldo
  * compartido. Devuelve true/false para que la pantalla pueda avisar si no
@@ -92,7 +107,7 @@ export async function uploadSSMAEntry(folderId, entry) {
   if (!folderId) return false;
   try {
     const b = ssmaEntryBreakdown(entry);
-    await uploadJSON(folderId, `${entry.date}.json`, {
+    await uploadOrReplaceJSON(folderId, `${entry.date}.json`, {
       date: entry.date,
       personalDirecto: b.directo,
       personalIndirecto: b.indirecto,
@@ -156,14 +171,12 @@ export async function syncSSMAFromDrive(obraId, folderId) {
 export async function uploadChecklistType(folderId, type) {
   if (!folderId) return false;
   try {
-    const filename = `checklist-type-${type.key}.json`;
-    const blob = new Blob([JSON.stringify({ key: type.key, title: type.title, items: type.items, updatedAt: type.updatedAt })], { type: 'application/json' });
-    const existing = await findFileByName(folderId, filename);
-    if (existing) {
-      await updateFileContent(existing.id, blob);
-    } else {
-      await uploadFile(folderId, blob, filename);
-    }
+    await uploadOrReplaceJSON(folderId, `checklist-type-${type.key}.json`, {
+      key: type.key,
+      title: type.title,
+      items: type.items,
+      updatedAt: type.updatedAt,
+    });
     return true;
   } catch (err) {
     console.error('No se pudo subir la lista de ítems del checklist a Drive:', err);
@@ -212,7 +225,7 @@ export async function syncChecklistTypesFromDrive(obraId, folderId) {
 export async function uploadChecklistEntry(folderId, typeKey, entry) {
   if (!folderId) return false;
   try {
-    await uploadJSON(folderId, `${typeKey}-${entry.date}.json`, {
+    await uploadOrReplaceJSON(folderId, `${typeKey}-${entry.date}.json`, {
       typeKey,
       date: entry.date,
       items: entry.items,

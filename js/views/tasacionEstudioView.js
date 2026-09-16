@@ -117,10 +117,18 @@ export async function renderTasacionEstudioView(container, id) {
             ${generatedHTML ? `<button class="btn btn-secondary" id="btn-download">⬇️ Descargar HTML</button>` : ''}
             ${generatedHTML ? `<button class="btn btn-secondary" id="btn-upload-drive">☁️ Subir respaldo a Drive</button>` : ''}
           </div>
-          ${generatedHTML ? `<iframe id="preview-frame" class="tasacion-preview" srcdoc="${escapeHTML(generatedHTML)}"></iframe>` : '<p class="tasacion-muted">Todavía no se ha generado el informe.</p>'}
+          ${generatedHTML ? `<iframe id="preview-frame" class="tasacion-preview"></iframe>` : '<p class="tasacion-muted">Todavía no se ha generado el informe.</p>'}
         </section>
       </main>
     `;
+
+    // El HTML del informe (decenas de KB, lleno de comillas) se asigna como
+    // propiedad de JS, no como texto dentro del innerHTML de arriba — como
+    // atributo de texto (srcdoc="...") las comillas del propio HTML cortan
+    // el atributo antes de tiempo y el iframe queda en blanco (bug real,
+    // encontrado probando con Pancho).
+    const previewFrame = container.querySelector('#preview-frame');
+    if (previewFrame && generatedHTML) previewFrame.srcdoc = generatedHTML;
 
     container.querySelector('#btn-back').addEventListener('click', () => navigate('/banco/estudio-mercado'));
 

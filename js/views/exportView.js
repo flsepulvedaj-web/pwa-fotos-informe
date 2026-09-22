@@ -1,6 +1,6 @@
 import { buildObraReportPDF, downloadBlob, sanitizeFilename } from '../pdfExport.js';
 import { updatePhoto, updateFolder, getPhotosByFolder } from '../db.js';
-import { escapeHTML, toast } from '../utils.js';
+import { escapeHTML, toast, sampleRandom } from '../utils.js';
 import { REPORT_FORMATS, getFormatById, fixedLabelFor } from '../reportFormats.js';
 
 const LAST_FORMAT_KEY = 'export-last-format';
@@ -73,9 +73,13 @@ export function openExportReviewScreen(photos, folder) {
     const objectURLs = new Map();
     for (const p of photos) objectURLs.set(p.id, URL.createObjectURL(p.blob));
 
-    const orderedPhotos = [...photos];
-    const captionDrafts = new Map(photos.map((p) => [p.id, p.title || '']));
     let format = getFormatById(localStorage.getItem(LAST_FORMAT_KEY) || 'libre');
+    // `photos` (el parámetro) es la lista COMPLETA de la carpeta — se
+    // guarda aparte de `orderedPhotos` (lo que de verdad se exporta) para
+    // poder volver a armar el azar de nuevo, o restaurar todas las fotos,
+    // sin perder cuál era el universo original al cambiar de formato.
+    let orderedPhotos = format.randomCount ? sampleRandom(photos, format.randomCount) : [...photos];
+    const captionDrafts = new Map(photos.map((p) => [p.id, p.title || '']));
 
     const overlay = document.createElement('div');
     overlay.className = 'export-review';
@@ -101,10 +105,12 @@ export function openExportReviewScreen(photos, folder) {
             </div>
           </div>
           <label for="er-format">Formato del informe</label>
-          <select id="er-format">
-            ${REPORT_FORMATS.map((f) => `<option value="${f.id}" ${f.id === format.id ? 'selected' : ''}>${escapeHTML(f.label)}</option>`).join('')}
-          </select>
-          ${orderedPhotos.length > 1 ? '<p class="er-hint">Si el formato trae casilleros fijos (ej. "Casa con más avance"), usa las flechas para ordenar las fotos en la posición correcta — no hace falta escribirles nada.</p>' : ''}
+          <div class="er-row" id="er-format-row">
+            <select id="er-format">
+              ${REPORT_FORMATS.map((f) => `<option value="${f.id}" ${f.id === format.id ? 'selected' : ''}>${escapeHTML(f.label)}</option>`).join('')}
+            </select>
+          </div>
+          <p class="er-hint" id="er-format-hint"></p>
         </div>
         <div class="er-photo-list" id="er-photo-list"></div>
       </div>
@@ -113,6 +119,40 @@ export function openExportReviewScreen(photos, folder) {
 
     const list = overlay.querySelector('#er-photo-list');
     const formatSelect = overlay.querySelector('#er-format');
+    const hintEl = overlay.querySelector('#er-format-hint');
+    const formatRow = overlay.querySelector('#er-format-row');
+
+    function reshuffle() {
+      orderedPhotos = sampleRandom(photos, format.randomCount);
+      objectURLs.forEach((u) => URL.revokeObjectURL(u));
+      objectURLs.clear();
+      for (const p of orderedPhotos) objectURLs.set(p.id, URL.createObjectURL(p.blob));
+      renderList();
+      renderHint();
+    }
+
+    function renderHint() {
+      if (format.randomCount) {
+        hintEl.textContent = photos.length > format.randomCount
+          ? `Se eligieron ${orderedPhotos.length} fotos al azar de las ${photos.length} de la carpeta. Usa "Sortear otras" para otra combinación, 🔄 para cambiar una puntual, o las flechas para el orden.`
+          : `La carpeta tiene ${photos.length}, así que se usan todas.`;
+      } else {
+        hintEl.textContent = orderedPhotos.length > 1
+          ? 'Si el formato trae casilleros fijos (ej. "Casa con más avance"), usa las flechas para ordenar las fotos en la posición correcta — no hace falta escribirles nada.'
+          : '';
+      }
+      const existingBtn = document.getElementById('er-reshuffle');
+      if (existingBtn) existingBtn.remove();
+      if (format.randomCount) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-secondary';
+        btn.id = 'er-reshuffle';
+        btn.textContent = '🔀 Sortear otras';
+        btn.addEventListener('click', reshuffle);
+        formatRow.appendChild(btn);
+      }
+    }
 
     function renderList() {
       list.innerHTML = orderedPhotos
@@ -142,6 +182,7 @@ export function openExportReviewScreen(photos, folder) {
     }
 
     renderList();
+    renderHint();
 
     list.addEventListener('input', (e) => {
       if (e.target.classList.contains('er-caption-input')) {
@@ -198,7 +239,20 @@ export function openExportReviewScreen(photos, folder) {
     formatSelect.addEventListener('change', () => {
       format = getFormatById(formatSelect.value);
       localStorage.setItem(LAST_FORMAT_KEY, format.id);
-      renderList();
+      // Al entrar a un formato al azar se sortea de nuevo desde TODAS las
+      // fotos de la carpeta (no desde las que hubieran quedado de otro
+      // formato); al salir, se restauran todas — así cambiar de formato
+      // nunca "pierde" fotos que ya no se estén usando.
+      if (format.randomCount) {
+        reshuffle();
+      } else {
+        orderedPhotos = [...photos];
+        objectURLs.forEach((u) => URL.revokeObjectURL(u));
+        objectURLs.clear();
+        for (const p of orderedPhotos) objectURLs.set(p.id, URL.createObjectURL(p.blob));
+        renderList();
+        renderHint();
+      }
     });
 
     function cleanup() {

@@ -14,6 +14,16 @@ export const REPORT_FORMATS = [
     slotLabels: null,
   },
   {
+    id: 'aleatorio',
+    label: 'Aleatorio (8 fotos al azar, descripción libre)',
+    slotLabels: null,
+    // A diferencia de los demás formatos (que usan TODAS las fotos que
+    // llegaron a la pantalla de exportar, repitiendo de a 8 por página),
+    // este elige solo `randomCount` al azar de la carpeta — para informes
+    // rápidos donde no se necesita mostrar cada foto. Ver exportView.js.
+    randomCount: 8,
+  },
+  {
     id: 'casas-avance',
     label: 'Casas: más avanzada / menos avanzada',
     slotLabels: [

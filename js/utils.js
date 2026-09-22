@@ -213,6 +213,19 @@ export function findSimilarObra(name, obras) {
   return obras.find((o) => areObraNamesSimilar(o.name, name)) || null;
 }
 
+/** `n` elementos al azar de `arr`, sin repetir — o el arreglo completo
+ * (en su propio orden al azar) si tiene `n` o menos. Fisher-Yates parcial:
+ * no hace falta mezclar el resto del arreglo, solo hasta juntar `n`. */
+export function sampleRandom(arr, n) {
+  const copy = [...arr];
+  const count = Math.min(n, copy.length);
+  for (let i = 0; i < count; i++) {
+    const j = i + Math.floor(Math.random() * (copy.length - i));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+}
+
 export function toast(message) {
   const el = document.createElement('div');
   el.className = 'toast';

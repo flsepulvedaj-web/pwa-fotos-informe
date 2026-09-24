@@ -128,25 +128,30 @@ export async function renderControlChecklistView(container, obraId) {
 
   // Ids de checklists (días) ya reclamados para el backfill en ESTA sesión
   // de la pantalla — mismo motivo que backfillClaimed (de fotos): evita
-  // subir 2 veces el mismo día si esta función se dispara más de una vez.
+  // subir 2 veces el mismo día si esta función se dispara más de una vez
+  // (ej. cambiar de pestaña y volver) antes de que se alcance a marcar
+  // `driveSynced` en la base local.
   const entryBackfillClaimed = new Set();
 
-  /** Autoreparación: sube (o resube, no hace daño — uploadChecklistEntry
-   * reemplaza, no acumula) TODOS los checklists locales de este tipo, una
-   * vez por sesión. Arregla días viejos que se crearon ANTES de este cambio
-   * (cuando un checklist recién creado no se subía hasta contestar el
-   * primer ítem) y que por eso nunca llegaron a Drive — days donde solo se
-   * sacaron fotos sin contestar nada quedaban invisibles para siempre en
-   * los demás teléfonos, aunque las fotos sí estuvieran en Drive. */
+  /** Autoreparación, de verdad UNA sola vez (no una vez por sesión): sube
+   * los checklists locales de este tipo que nunca se marcaron
+   * `driveSynced` — arregla días viejos que se crearon ANTES de que el
+   * checklist se subiera apenas se crea (cuando solo se subía al contestar
+   * el primer ítem), que por eso nunca llegaron a Drive — días donde solo
+   * se sacaron fotos sin contestar nada quedaban invisibles para siempre en
+   * los demás teléfonos, aunque las fotos sí estuvieran en Drive. Una vez
+   * marcado `driveSynced`, no se vuelve a tocar ese día por este motivo
+   * (evita seguir gastando cuota de Drive en re-subir lo que ya está bien). */
   function backfillUnuploadedEntries(type, entriesList) {
     if (!obra.checklistDriveFolderId || !isSignedIn()) return;
-    const pending = entriesList.filter((e) => !entryBackfillClaimed.has(e.id));
+    const pending = entriesList.filter((e) => !e.driveSynced && !entryBackfillClaimed.has(e.id));
     if (!pending.length) return;
     for (const e of pending) entryBackfillClaimed.add(e.id);
     (async () => {
       for (const e of pending) {
         try {
-          await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, e);
+          const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, e);
+          if (ok) await updateChecklistEntry(e.id, { driveSynced: true }, { updatedAt: e.updatedAt });
         } catch (err) {
           console.error('No se pudo resubir un checklist viejo a Drive:', err);
         }
@@ -168,7 +173,9 @@ export async function renderControlChecklistView(container, obraId) {
       // siempre visibles solo en Drive, nunca dentro de la app de los
       // demás. Bug real detectado con Sergio en Loncoche.
       if (obra.checklistDriveFolderId) {
-        uploadChecklistEntry(obra.checklistDriveFolderId, type.key, e).catch((err) => console.error('No se pudo subir el checklist nuevo a Drive:', err));
+        uploadChecklistEntry(obra.checklistDriveFolderId, type.key, e)
+          .then((ok) => { if (ok) updateChecklistEntry(e.id, { driveSynced: true }, { updatedAt: e.updatedAt }); })
+          .catch((err) => console.error('No se pudo subir el checklist nuevo a Drive:', err));
       }
     }
     entry = e;
@@ -433,6 +440,7 @@ export async function renderControlChecklistView(container, obraId) {
       if (obra.checklistDriveFolderId) {
         const ok = await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, entry);
         if (!ok) toast('⚠️ No se pudo subir a Drive (quedó guardado en tu teléfono, se reintenta después).');
+        else if (!entry.driveSynced) entry = await updateChecklistEntry(entry.id, { driveSynced: true }, { updatedAt: entry.updatedAt });
       }
       regenerateAndUploadPdf();
     }

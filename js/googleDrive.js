@@ -181,6 +181,41 @@ async function fetchWithTimeout(url, options, timeoutMs = 8000) {
   }
 }
 
+/**
+ * Google limita cuántas "unidades" de costo por minuto puede gastar cada
+ * usuario en la API de Drive — con meses de historia real, un sync que
+ * dispara muchas listas/subidas casi en paralelo (varias obras, tipos y
+ * días a la vez) puede pasarse de esa cuota, y Google responde 403
+ * "Quota exceeded... rateLimitExceeded" — error real que le salió a Pancho.
+ * Esta cola espacia TODAS las llamadas a Drive (una fila global, no una
+ * por función) para no pasarse nunca de la cuota por minuto. Si de todas
+ * formas se llega a pasar (ráfaga grande), se espera un poco y se
+ * reintenta una vez antes de mostrar el error — casi siempre alcanza.
+ */
+let driveQueue = Promise.resolve();
+const DRIVE_MIN_GAP_MS = 120;
+function throttleDrive() {
+  const turn = driveQueue.then(() => new Promise((resolve) => setTimeout(resolve, DRIVE_MIN_GAP_MS)));
+  driveQueue = turn;
+  return turn;
+}
+
+async function driveFetch(url, options, timeoutMs = 20000) {
+  await throttleDrive();
+  let res = await fetchWithTimeout(url, options, timeoutMs);
+  if (res.status === 403 || res.status === 429) {
+    const text = await res.text().catch(() => '');
+    if (/rateLimitExceeded/i.test(text)) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await throttleDrive();
+      res = await fetchWithTimeout(url, options, timeoutMs);
+    } else {
+      return new Response(text, { status: res.status, statusText: res.statusText });
+    }
+  }
+  return res;
+}
+
 export async function getSignedInEmail() {
   if (!isSignedIn()) return null;
   if (cachedEmail) return cachedEmail;
@@ -253,7 +288,7 @@ export async function listDriveFolders(parentId) {
   const q = encodeURIComponent(
     `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
   );
-  const res = await fetch(
+  const res = await driveFetch(
     `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=200&spaces=drive`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
@@ -272,7 +307,7 @@ export async function listDriveFolders(parentId) {
  */
 export async function createDriveFolder(parentId, name) {
   const token = await signIn();
-  const res = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -296,7 +331,7 @@ export async function createDriveFolder(parentId, name) {
 export async function listDriveFiles(parentId) {
   const token = await signIn();
   const q = encodeURIComponent(`'${parentId}' in parents and mimeType contains 'image/' and trashed=false`);
-  const res = await fetch(
+  const res = await driveFetch(
     `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&spaces=drive`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
@@ -322,7 +357,7 @@ export async function listDriveFiles(parentId) {
 export async function listDriveScheduleFiles(parentId) {
   const token = await signIn();
   const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
-  const res = await fetch(
+  const res = await driveFetch(
     `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&pageSize=200&spaces=drive&orderBy=modifiedTime desc`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
@@ -340,7 +375,7 @@ export async function listDriveScheduleFiles(parentId) {
  */
 export async function downloadDriveFile(fileId) {
   const token = await signIn();
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -385,7 +420,7 @@ export async function uploadFile(folderId, blob, filename) {
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', blob);
 
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+  const res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: form,
@@ -407,7 +442,7 @@ export async function uploadFile(folderId, blob, filename) {
 export async function findFileByName(parentId, name) {
   const token = await signIn();
   const q = encodeURIComponent(`'${parentId}' in parents and name='${name.replace(/'/g, "\\'")}' and trashed=false`);
-  const res = await fetch(
+  const res = await driveFetch(
     `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
@@ -427,7 +462,7 @@ export async function findFileByName(parentId, name) {
  * sincronice. */
 export async function trashDriveFile(fileId) {
   const token = await signIn();
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ trashed: true }),
@@ -441,7 +476,7 @@ export async function trashDriveFile(fileId) {
 /** Reemplaza el contenido de un archivo de Drive que ya existe. */
 export async function updateFileContent(fileId, blob) {
   const token = await signIn();
-  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+  const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}` },
     body: blob,
@@ -462,7 +497,7 @@ export async function updateFileContent(fileId, blob) {
 export async function listDriveJSONFiles(parentId) {
   const token = await signIn();
   const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
-  const res = await fetch(
+  const res = await driveFetch(
     `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&pageSize=500&spaces=drive&orderBy=modifiedTime desc`,
     { headers: { Authorization: `Bearer ${token}` } }
   );

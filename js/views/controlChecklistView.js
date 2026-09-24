@@ -92,6 +92,7 @@ export async function renderControlChecklistView(container, obraId) {
     activeTypeId = typeId;
     editingItems = false;
     entries = await getChecklistEntriesByType(typeId);
+    backfillUnuploadedEntries(activeType(), entries);
     await loadEntryForDate(todayLocalISO());
   }
 
@@ -125,12 +126,50 @@ export async function renderControlChecklistView(container, obraId) {
     })();
   }
 
+  // Ids de checklists (días) ya reclamados para el backfill en ESTA sesión
+  // de la pantalla — mismo motivo que backfillClaimed (de fotos): evita
+  // subir 2 veces el mismo día si esta función se dispara más de una vez.
+  const entryBackfillClaimed = new Set();
+
+  /** Autoreparación: sube (o resube, no hace daño — uploadChecklistEntry
+   * reemplaza, no acumula) TODOS los checklists locales de este tipo, una
+   * vez por sesión. Arregla días viejos que se crearon ANTES de este cambio
+   * (cuando un checklist recién creado no se subía hasta contestar el
+   * primer ítem) y que por eso nunca llegaron a Drive — days donde solo se
+   * sacaron fotos sin contestar nada quedaban invisibles para siempre en
+   * los demás teléfonos, aunque las fotos sí estuvieran en Drive. */
+  function backfillUnuploadedEntries(type, entriesList) {
+    if (!obra.checklistDriveFolderId || !isSignedIn()) return;
+    const pending = entriesList.filter((e) => !entryBackfillClaimed.has(e.id));
+    if (!pending.length) return;
+    for (const e of pending) entryBackfillClaimed.add(e.id);
+    (async () => {
+      for (const e of pending) {
+        try {
+          await uploadChecklistEntry(obra.checklistDriveFolderId, type.key, e);
+        } catch (err) {
+          console.error('No se pudo resubir un checklist viejo a Drive:', err);
+        }
+      }
+    })();
+  }
+
   async function loadEntryForDate(date) {
     const type = activeType();
     let e = await getChecklistEntryByTypeAndDate(type.id, date);
     if (!e) {
       e = await addChecklistEntry({ obraId, checklistTypeId: type.id, date, items: type.items });
       entries = await getChecklistEntriesByType(type.id);
+      // Se sube a Drive apenas se crea (antes solo se subía al contestar el
+      // primer ítem) — si alguien abre un día y solo saca fotos sin
+      // contestar nada, el checklist de ESE día nunca llegaba a Drive, y
+      // sin el registro del día ahí, syncChecklistPhotosFromDrive no tenía
+      // dónde "colgar" esas fotos en los demás teléfonos: quedaban para
+      // siempre visibles solo en Drive, nunca dentro de la app de los
+      // demás. Bug real detectado con Sergio en Loncoche.
+      if (obra.checklistDriveFolderId) {
+        uploadChecklistEntry(obra.checklistDriveFolderId, type.key, e).catch((err) => console.error('No se pudo subir el checklist nuevo a Drive:', err));
+      }
     }
     entry = e;
     photos = await getChecklistPhotosByEntry(e.id);
@@ -138,6 +177,7 @@ export async function renderControlChecklistView(container, obraId) {
   }
 
   entries = await getChecklistEntriesByType(activeTypeId);
+  backfillUnuploadedEntries(activeType(), entries);
   await loadEntryForDate(deepLink.get('date') || todayLocalISO());
 
   async function syncFromDrive({ auto }) {

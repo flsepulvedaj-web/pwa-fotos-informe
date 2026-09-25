@@ -715,7 +715,19 @@ export async function createChecklistType({ obraId, key, title, items, order = 0
     // (Promise.all) y caen en el mismo milisegundo, así que sin este campo
     // el orden de las pestañas salía distinto en cada recarga.
     order,
-    items: items.map((it) => ({ id: uuid(), label: it.label, nota: it.nota || '' })),
+    // Id determinístico por posición (no uuid al azar) — igual que el id
+    // del tipo de arriba, y por el mismo motivo real: dos teléfonos que
+    // abren este checklist por primera vez ANTES de que exista nada en
+    // Drive generaban cada uno sus propias preguntas por defecto con ids
+    // al azar. Cuando el tipo se sincronizaba, un teléfono pisaba el set
+    // de ids del otro y las respuestas ya guardadas (por id viejo)
+    // quedaban "sin contestar" para siempre en pantalla. Con el id ligado
+    // a la posición, dos teléfonos que arman la MISMA lista por defecto
+    // llegan solos al mismo id, sin necesidad de que ninguno sincronice
+    // primero. Ítems agregados a mano después (no los por defecto) siguen
+    // usando uuid — no hay riesgo de choque ahí porque nunca se auto-crean
+    // en más de un dispositivo a la vez.
+    items: items.map((it, i) => ({ id: it.id || `${key}-default-${i}`, label: it.label, nota: it.nota || '' })),
     createdAt: Date.now(),
   };
   await wrap(store.add(type));

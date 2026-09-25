@@ -562,10 +562,29 @@ export async function renderControlChecklistView(container, obraId) {
  * Recorre `type.items` (no `entry.items`) para que el orden y el set de
  * preguntas sea siempre el de la plantilla actual.
  */
+/** Compara textos de pregunta para el respaldo por texto de abajo — tolera
+ * mayúsculas/espacios de más, no exige coincidencia carácter por carácter. */
+function sameLabel(a, b) {
+  const norm = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return !!a && !!b && norm(a) === norm(b);
+}
+
 function mergeEntryItemsWithTemplate(type, entry) {
   return type.items.map((templateItem) => {
     const itemId = templateItem.itemId ?? templateItem.id;
-    const stored = entry.items.find((it) => it.itemId === itemId);
+    // Primero por id — pero el id de una pregunta NO es 100% estable: cada
+    // teléfono generaba sus propias preguntas por defecto la primera vez
+    // que abría el checklist (antes de que existiera cualquier tipo en
+    // Drive), así que dos teléfonos podían terminar con ids distintos para
+    // "la misma" pregunta, y sincronizar el tipo desde Drive podía pisar
+    // el set de ids local con el de otro teléfono — dejando respuestas ya
+    // contestadas "sin contestar" para siempre en la pantalla, aunque el
+    // dato real seguía ahí guardado. Bug real: Sergio en Loncoche tenía
+    // días completos en Drive con "SI" en todo, pero a Pancho le salían
+    // como pendientes. Por eso, si no hay match por id, se respalda
+    // buscando por el TEXTO de la pregunta (que si no se editó, es el
+    // mismo) antes de darla por no contestada.
+    const stored = entry.items.find((it) => it.itemId === itemId) || entry.items.find((it) => sameLabel(it.label, templateItem.label));
     return {
       itemId,
       label: templateItem.label,

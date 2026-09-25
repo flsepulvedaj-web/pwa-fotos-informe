@@ -181,12 +181,13 @@ export async function syncFoldersFromDrive(folder) {
  * nuevo la próxima vez.
  */
 export async function syncPhotosFromDrive(folder) {
-  if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return { downloaded: 0, error: null };
+  if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return { downloaded: 0, deletedPhotoCount: 0, error: null };
   try {
     const [driveFiles, localPhotos] = await Promise.all([
       listDriveFiles(folder.driveFolderId),
       getPhotosByFolder(folder.id),
     ]);
+    const driveFileIds = new Set(driveFiles.map((f) => f.id));
     const knownDriveFileIds = new Set(localPhotos.map((p) => p.driveFileId).filter(Boolean));
     const newFiles = driveFiles.filter((file) => !knownDriveFileIds.has(file.id));
     let downloaded = 0;
@@ -199,10 +200,27 @@ export async function syncPhotosFromDrive(folder) {
         console.error(`Error descargando "${file.name}" de Drive:`, err);
       }
     });
-    return { downloaded, error: null };
+
+    // Mismo criterio "Drive manda" que ya aplica a carpetas enteras (ver
+    // syncFoldersFromDrive) pero a nivel de FOTO individual: si Pancho
+    // borra una foto puntual en Drive (sin borrar la carpeta), antes se
+    // quedaba pegada en la app para siempre porque esta función solo
+    // sabía AGREGAR, nunca sacar. Solo se borran las que YA tienen
+    // `driveFileId` (ya se habían reconciliado con Drive alguna vez) — una
+    // foto recién tomada que todavía no terminó de subir no tiene ese dato
+    // y nunca se toca acá, para no perder algo que ni siquiera llegó a
+    // Drive todavía.
+    let deletedPhotoCount = 0;
+    for (const p of localPhotos) {
+      if (!p.driveFileId || driveFileIds.has(p.driveFileId)) continue;
+      await deletePhoto(p.id);
+      deletedPhotoCount++;
+    }
+
+    return { downloaded, deletedPhotoCount, error: null };
   } catch (err) {
     console.error('Error trayendo fotos desde Drive:', err);
-    return { downloaded: 0, error: err.message || String(err) };
+    return { downloaded: 0, deletedPhotoCount: 0, error: err.message || String(err) };
   }
 }
 
@@ -218,7 +236,7 @@ let lastTreeSyncFinishedAt = 0;
 const TREE_SYNC_COOLDOWN_MS = 5000;
 
 export async function syncDriveTreeRecursive(folder, onProgress) {
-  const totals = { newCount: 0, deletedCount: 0, recoveredCount: 0, downloaded: 0, error: null };
+  const totals = { newCount: 0, deletedCount: 0, deletedPhotoCount: 0, recoveredCount: 0, downloaded: 0, error: null };
   if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return totals;
   // Si Pancho entra y sale rápido de varias carpetas, cada apertura dispara
   // esta sincronización — sin este seguro, dos pasadas podían solaparse,
@@ -238,6 +256,7 @@ export async function syncDriveTreeRecursive(folder, onProgress) {
     const [folderResult, photoResult] = await Promise.all([syncFoldersFromDrive(f), syncPhotosFromDrive(f)]);
     totals.newCount += folderResult.newCount;
     totals.deletedCount += folderResult.deletedCount;
+    totals.deletedPhotoCount += photoResult.deletedPhotoCount;
     totals.recoveredCount += folderResult.recoveredCount;
     totals.downloaded += photoResult.downloaded;
     if (folderResult.error) totals.error = folderResult.error;

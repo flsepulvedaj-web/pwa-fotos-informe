@@ -286,10 +286,35 @@ export async function renderCameraView(container, folderId) {
 
   container.querySelector('#btn-shutter').addEventListener('click', async () => {
     if (!video.videoWidth) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    // El cuadro crudo de getUserMedia viene en la orientación del SENSOR,
+    // no de la pantalla — como la cámara queda con la orientación libre
+    // (para poder fotografiar horizontal, ver unlockOrientation arriba),
+    // sacar una foto con el teléfono de lado guardaba el cuadro sin
+    // corregir: se veía bien en la pantalla en vivo, pero el archivo
+    // guardado quedaba girado 90°. Bug real encontrado en fotos de
+    // Verónica en Portal Santa Elvira (todas giradas, siempre igual).
+    // Se corrige rotando el canvas según cuánto está rotada la pantalla
+    // respecto de su orientación de fábrica (screen.orientation.angle).
+    const angle = ((screen.orientation?.angle ?? 0) % 360 + 360) % 360;
+    const rotated = angle === 90 || angle === 270;
+    canvas.width = rotated ? vh : vw;
+    canvas.height = rotated ? vw : vh;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.save();
+    if (angle === 90) {
+      ctx.translate(canvas.width, 0);
+      ctx.rotate(Math.PI / 2);
+    } else if (angle === 180) {
+      ctx.translate(canvas.width, canvas.height);
+      ctx.rotate(Math.PI);
+    } else if (angle === 270) {
+      ctx.translate(0, canvas.height);
+      ctx.rotate(-Math.PI / 2);
+    }
+    ctx.drawImage(video, 0, 0, vw, vh);
+    ctx.restore();
     const blob = await canvasToBlob(canvas, 'image/jpeg', 0.9);
     const photo = await addPhoto({
       folderId,

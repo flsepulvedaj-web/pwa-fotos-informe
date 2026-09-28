@@ -1,8 +1,7 @@
-import { addPhoto, deletePhoto, getFolder, getPhoto, updatePhoto } from '../db.js';
+import { addPhoto, deletePhoto, getFolder } from '../db.js';
 import { navigate } from '../router.js';
-import { canvasToBlob, toast, rotateImageBlob } from '../utils.js';
-import { trySync } from '../sync.js';
-import { updateFileContent } from '../googleDrive.js';
+import { canvasToBlob, toast } from '../utils.js';
+import { trySync, rotatePhoto } from '../sync.js';
 
 let activeStream = null;
 let facingMode = 'environment';
@@ -391,28 +390,8 @@ function openLastShotPreview(photo, { onDelete, onRotated }) {
 
   async function rotate(direction) {
     try {
-      const current = await getPhoto(photo.id);
-      if (!current) return;
-      const rotatedBlob = await rotateImageBlob(current.blob, direction);
-      if (current.driveFileId) {
-        // Ya se había subido a Drive: se REEMPLAZA el mismo archivo (no se
-        // deja en 'pending', porque eso la subiría de nuevo como archivo
-        // NUEVO — mismo bug de fotos duplicadas que ya se arregló antes en
-        // el checklist). driveModifiedTime se actualiza a mano para que la
-        // sincronización no la vuelva a bajar creyendo que Drive cambió.
-        try {
-          await updateFileContent(current.driveFileId, rotatedBlob);
-          await updatePhoto(photo.id, { blob: rotatedBlob, driveModifiedTime: new Date().toISOString() });
-        } catch (err) {
-          console.error('No se pudo actualizar la foto en Drive:', err);
-          await updatePhoto(photo.id, { blob: rotatedBlob });
-          toast('Se rotó en el teléfono, pero no se pudo actualizar en Drive (se reintenta después).');
-        }
-      } else {
-        // Todavía no se ha subido (o falló antes) — se deja como estaba
-        // (pending/error/null), la subida normal se encarga cuando toque.
-        await updatePhoto(photo.id, { blob: rotatedBlob });
-      }
+      const rotatedBlob = await rotatePhoto(photo.id, direction);
+      if (!rotatedBlob) return;
       const newUrl = URL.createObjectURL(rotatedBlob);
       img.src = newUrl;
       onRotated(newUrl);

@@ -307,6 +307,12 @@ export async function getPendingUploads() {
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
+export async function getContentDirtyPhotos() {
+  const store = await tx('photos', 'readonly');
+  const all = await wrap(store.getAll());
+  return all.filter((p) => p.contentDirty && p.driveFileId);
+}
+
 export async function getPhoto(id) {
   const store = await tx('photos', 'readonly');
   return wrap(store.get(id));

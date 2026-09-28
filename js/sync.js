@@ -1,5 +1,6 @@
-import { ROOT_ID, getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deletePhoto, deleteFolderRecursive } from './db.js';
-import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile, isSignedIn } from './googleDrive.js';
+import { ROOT_ID, getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deletePhoto, deleteFolderRecursive, getPhoto, getContentDirtyPhotos } from './db.js';
+import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile, isSignedIn, updateFileContent } from './googleDrive.js';
+import { rotateImageBlob } from './utils.js';
 
 let syncing = false;
 const listeners = new Set();
@@ -78,8 +79,72 @@ export async function trySync() {
       }
       notify();
     }
+    for (const photo of await getContentDirtyPhotos()) {
+      await queuePhotoContentPush(photo.id);
+    }
   } finally {
     syncing = false;
+  }
+}
+
+// Girar una foto ya subida: se guarda al tiro en el teléfono y el reemplazo
+// en Drive va después, en segundo plano — esperar a Drive antes de mostrar
+// el giro hacía que cada clic se demorara varios segundos. `contentDirty`
+// deja marcado que Drive quedó atrasado, para reintentarlo en trySync si no
+// había señal o sesión.
+let rotateChain = Promise.resolve();
+let contentPushChain = Promise.resolve();
+const contentPushTimers = new Map();
+
+export function rotatePhoto(photoId, direction) {
+  const run = rotateChain.then(async () => {
+    const current = await getPhoto(photoId);
+    if (!current) return null;
+    const blob = await rotateImageBlob(current.blob, direction);
+    const changes = { blob };
+    if (current.driveFileId) {
+      changes.contentDirty = true;
+      changes.contentRev = (current.contentRev || 0) + 1;
+    }
+    await updatePhoto(photoId, changes);
+    if (current.driveFileId) schedulePhotoContentPush(photoId);
+    return blob;
+  });
+  rotateChain = run.catch(() => {});
+  return run;
+}
+
+// Varios clics seguidos (ej. girar 2 veces) suben una sola vez al final.
+function schedulePhotoContentPush(photoId) {
+  clearTimeout(contentPushTimers.get(photoId));
+  contentPushTimers.set(
+    photoId,
+    setTimeout(() => {
+      contentPushTimers.delete(photoId);
+      queuePhotoContentPush(photoId);
+    }, 1500)
+  );
+}
+
+// En fila, para que una subida lenta vieja nunca pise en Drive a una más nueva.
+function queuePhotoContentPush(photoId) {
+  const run = contentPushChain.then(() => pushPhotoContent(photoId));
+  contentPushChain = run.catch(() => {});
+  return run;
+}
+
+async function pushPhotoContent(photoId) {
+  if (!navigator.onLine || !isSignedIn()) return;
+  const photo = await getPhoto(photoId);
+  if (!photo || !photo.contentDirty || !photo.driveFileId) return;
+  try {
+    const res = await updateFileContent(photo.driveFileId, photo.blob);
+    const latest = await getPhoto(photoId);
+    if (latest && latest.contentRev === photo.contentRev) {
+      await updatePhoto(photoId, { contentDirty: false, driveModifiedTime: res.modifiedTime || new Date().toISOString() });
+    }
+  } catch (err) {
+    console.error('No se pudo actualizar la foto en Drive (se reintenta después):', err);
   }
 }
 
@@ -199,7 +264,9 @@ export async function syncPhotosFromDrive(folder) {
     // informes PDF, que arman el archivo con lo que hay guardado local).
     const updatedFiles = driveFiles.filter((file) => {
       const local = localByDriveId.get(file.id);
-      if (!local || !file.modifiedTime) return false;
+      // Un giro hecho acá que todavía no llega a Drive: bajar la versión de
+      // Drive lo desharía.
+      if (!local || !file.modifiedTime || local.contentDirty) return false;
       const localTime = local.driveModifiedTime ? new Date(local.driveModifiedTime).getTime() : 0;
       return new Date(file.modifiedTime).getTime() > localTime;
     });

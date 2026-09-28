@@ -476,7 +476,7 @@ export async function trashDriveFile(fileId) {
 /** Reemplaza el contenido de un archivo de Drive que ya existe. */
 export async function updateFileContent(fileId, blob) {
   const token = await signIn();
-  const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+  const res = await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,modifiedTime`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}` },
     body: blob,

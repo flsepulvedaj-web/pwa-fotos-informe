@@ -1,5 +1,6 @@
-import { getPhoto, updatePhoto, deletePhoto, getPhotosByFolder } from '../db.js';
-import { navigate } from '../router.js';
+import { ROOT_ID, getPhoto, updatePhoto, deletePhoto, getPhotosByFolder, getPhotoGroupsRecursive } from '../db.js';
+import { navigate, getQueryParams } from '../router.js';
+import { allPhotosFocusKey } from './allPhotosView.js';
 import { promptDialog, confirmDialog, toast, escapeHTML, formatDate as fmtDate } from '../utils.js';
 import { rotatePhoto } from '../sync.js';
 
@@ -25,8 +26,25 @@ export async function renderPhotoView(container, photoId) {
     return;
   }
 
-  const backPath = photo.folderId ? `/fotos/folder/${photo.folderId}` : '/fotos';
-  const siblings = photo.folderId ? await getPhotosByFolder(photo.folderId) : [photo];
+  // Abierta desde "Todas las fotos" (?all=<carpeta de partida>): las flechas
+  // recorren todas las fotos de esa pantalla, no solo las de la carpeta de la
+  // foto, y "atrás" vuelve a esa pantalla.
+  const allParam = getQueryParams().get('all');
+  let backPath = photo.folderId ? `/fotos/folder/${photo.folderId}` : '/fotos';
+  let siblings = photo.folderId ? await getPhotosByFolder(photo.folderId) : [photo];
+  if (allParam !== null) {
+    const groups = await getPhotoGroupsRecursive(allParam === 'root' ? ROOT_ID : allParam);
+    const flat = groups.flatMap((g) => g.photos);
+    if (flat.some((p) => p.id === photoId)) {
+      siblings = flat;
+      backPath = `/fotos/todas/${allParam}`;
+      try {
+        sessionStorage.setItem(allPhotosFocusKey(allParam), photoId);
+      } catch {
+        // sin sessionStorage: al volver queda arriba de todo
+      }
+    }
+  }
   const index = siblings.findIndex((p) => p.id === photoId);
   const prev = siblings[index - 1];
   const next = siblings[index + 1];
@@ -67,7 +85,7 @@ export async function renderPhotoView(container, photoId) {
   function goTo(dir) {
     const target = dir < 0 ? prev : next;
     if (!target) return;
-    history.replaceState(null, '', `#/fotos/photo/${target.id}`);
+    history.replaceState(null, '', `#/fotos/photo/${target.id}${allParam !== null ? `?all=${allParam}` : ''}`);
     renderPhotoView(container, target.id);
   }
 

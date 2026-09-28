@@ -145,6 +145,7 @@ export async function renderFoldersView(container, folderId) {
     </main>
 
     <div class="fab-row">
+      <button class="fab fab-secondary" id="btn-all-photos" title="Ver todas las fotos de esta carpeta y sus subcarpetas">🎞️</button>
       ${shortcutFolders.map((f) => `
         <button class="fab fab-secondary" data-shortcut-folder-id="${f.id}" title="${escapeHTML(f.name)}">📖</button>
       `).join('')}
@@ -378,6 +379,10 @@ export async function renderFoldersView(container, folderId) {
     setFolderSelectMode(false);
     await openSameAdvanceMultiFlow(selectedFolders);
     renderFoldersView(container, folderId);
+  });
+
+  container.querySelector('#btn-all-photos').addEventListener('click', () => {
+    navigate(`/fotos/todas/${folderId === ROOT_ID ? 'root' : folderId}`);
   });
 
   // Accesos directos (carpetas fijadas)

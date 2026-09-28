@@ -5,6 +5,7 @@ import { renderHomeView } from './views/homeView.js';
 import { renderFoldersView } from './views/foldersView.js';
 import { renderCameraView } from './views/cameraView.js';
 import { renderPhotoView } from './views/photoView.js';
+import { renderAllPhotosView } from './views/allPhotosView.js';
 import { renderProtocolHomeView } from './views/protocolHomeView.js';
 import { renderProtocolObraView } from './views/protocolObraView.js';
 import { renderProtocolFormView } from './views/protocolFormView.js';
@@ -51,6 +52,7 @@ registerRoute('/banco/estudio-mercado', () => renderTasacionHomeView(appEl));
 registerRoute('/banco/estudio-mercado/:id', ({ id }) => renderTasacionEstudioView(appEl, id));
 registerRoute('/fotos/camera/:folderId', ({ folderId }) => renderCameraView(appEl, folderId === 'root' ? ROOT_ID : folderId));
 registerRoute('/fotos/photo/:id', ({ id }) => renderPhotoView(appEl, id));
+registerRoute('/fotos/todas/:id', ({ id }) => renderAllPhotosView(appEl, id === 'root' ? ROOT_ID : id));
 
 // Módulo Protocolos (checklist de calidad + firma digital).
 registerRoute('/protocolos', () => renderProtocolHomeView(appEl));

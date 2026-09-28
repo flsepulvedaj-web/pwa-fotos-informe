@@ -350,6 +350,26 @@ export async function getPhotoCountByFolderRecursive(folderId) {
   return total + childCounts.reduce((a, b) => a + b, 0);
 }
 
+/**
+ * Todas las fotos de una carpeta y de sus subcarpetas (cualquier nivel),
+ * agrupadas por carpeta en el mismo orden en que se ven en la app. Solo
+ * incluye carpetas que tienen fotos propias. `label` es la ruta relativa a
+ * la carpeta de partida (ej. "Torre A › Piso 2 › 204").
+ */
+export async function getPhotoGroupsRecursive(rootId) {
+  const groups = [];
+  async function walk(folder, trail) {
+    const photos = await getPhotosByFolder(folder.id);
+    if (photos.length) groups.push({ folder, label: trail.length ? trail.join(' › ') : root.name, photos });
+    for (const child of await getChildFolders(folder.id)) {
+      await walk(child, [...trail, child.name]);
+    }
+  }
+  const root = rootId === ROOT_ID ? { id: ROOT_ID, name: 'Inicio' } : await getFolder(rootId);
+  if (root) await walk(root, []);
+  return groups;
+}
+
 export async function updatePhoto(id, changes) {
   const store = await tx('photos', 'readwrite');
   const photo = await wrap(store.get(id));

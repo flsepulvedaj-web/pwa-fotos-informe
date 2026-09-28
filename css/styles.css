@@ -987,6 +987,36 @@ button {
   padding: 12px;
 }
 
+.all-photos-group {
+  margin-bottom: 18px;
+}
+
+.all-photos-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 6px 2px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.all-photos-count {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .photo-stage {
   position: relative;
   width: 100%;

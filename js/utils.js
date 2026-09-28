@@ -62,6 +62,44 @@ export function downscaleImageBlob(blob, maxDim = 1600, quality = 0.82) {
   });
 }
 
+/**
+ * Rota una foto 90° (izquierda o derecha) y devuelve el blob resultante —
+ * para el botón "Rotar" manual: la corrección automática de la cámara (ver
+ * cameraView.js) depende de sensores del teléfono que no siempre están
+ * disponibles (ej. con la rotación automática del sistema desactivada, algo
+ * bastante común), así que esto es el respaldo que SIEMPRE funciona, sin
+ * depender de nada del teléfono.
+ */
+export function rotateImageBlob(blob, direction = 'right', quality = 0.9) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = h;
+      canvas.height = w;
+      const ctx = canvas.getContext('2d');
+      if (direction === 'right') {
+        ctx.translate(canvas.width, 0);
+        ctx.rotate(Math.PI / 2);
+      } else {
+        ctx.translate(0, canvas.height);
+        ctx.rotate(-Math.PI / 2);
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      canvasToBlob(canvas, 'image/jpeg', quality).then(resolve);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('No se pudo leer la imagen'));
+    };
+    img.src = url;
+  });
+}
+
 export function escapeHTML(str) {
   const div = document.createElement('div');
   div.textContent = str ?? '';

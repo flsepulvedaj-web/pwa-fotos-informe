@@ -273,7 +273,7 @@ export async function getFolderPath(id) {
 
 // ---------- Photos ----------
 
-export async function addPhoto({ folderId, blob, title = '', note = '', syncStatus = null, driveFileId = null }) {
+export async function addPhoto({ folderId, blob, title = '', note = '', syncStatus = null, driveFileId = null, driveModifiedTime = null }) {
   const store = await tx('photos', 'readwrite');
   const photo = {
     id: uuid(),
@@ -287,6 +287,10 @@ export async function addPhoto({ folderId, blob, title = '', note = '', syncStat
     // subió directo ahí, sin pasar por la app) — sirve para no volver a
     // descargarla en cada sincronización ni tampoco volver a subirla.
     driveFileId,
+    // `modifiedTime` de Drive al momento de bajarla — permite notar si
+    // alguien reemplazó el CONTENIDO del archivo en Drive (ej. una foto que
+    // se corrigió de rotación) sin cambiar su id, y volver a bajarla.
+    driveModifiedTime,
   };
   await wrap(store.add(photo));
   return photo;

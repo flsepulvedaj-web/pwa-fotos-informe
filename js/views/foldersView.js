@@ -235,13 +235,16 @@ export async function renderFoldersView(container, folderId) {
       if (totals.deletedPhotoCount) {
         notices.push(`${totals.deletedPhotoCount} foto${totals.deletedPhotoCount === 1 ? '' : 's'} borrada${totals.deletedPhotoCount === 1 ? '' : 's'} (ya no estaba${totals.deletedPhotoCount === 1 ? '' : 'n'} en Drive)`);
       }
+      if (totals.updated) {
+        notices.push(`${totals.updated} foto${totals.updated === 1 ? '' : 's'} actualizada${totals.updated === 1 ? '' : 's'} (se reemplazó el contenido en Drive)`);
+      }
       if (totals.recoveredCount) {
         notices.push(`${totals.recoveredCount} foto${totals.recoveredCount === 1 ? '' : 's'} sin subir se guardó${totals.recoveredCount === 1 ? '' : 'aron'} en "Recuperadas de Drive"`);
       }
       if (notices.length) toast(notices.join(' · '));
       else if (totals.error) toast(`Drive: ${totals.error}`);
 
-      if ((totals.newCount || totals.deletedCount || totals.deletedPhotoCount || totals.recoveredCount || totals.downloaded) && myViewToken === activeViewToken) {
+      if ((totals.newCount || totals.deletedCount || totals.deletedPhotoCount || totals.updated || totals.recoveredCount || totals.downloaded) && myViewToken === activeViewToken) {
         renderFoldersView(container, folderId);
       }
     });

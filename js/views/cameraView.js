@@ -1,7 +1,8 @@
-import { addPhoto, deletePhoto, getFolder } from '../db.js';
+import { addPhoto, deletePhoto, getFolder, getPhoto, updatePhoto } from '../db.js';
 import { navigate } from '../router.js';
-import { canvasToBlob, toast } from '../utils.js';
+import { canvasToBlob, toast, rotateImageBlob } from '../utils.js';
 import { trySync } from '../sync.js';
+import { updateFileContent } from '../googleDrive.js';
 
 let activeStream = null;
 let facingMode = 'environment';
@@ -331,12 +332,19 @@ export async function renderCameraView(container, folderId) {
   lastShotBtn.addEventListener('click', () => {
     if (!sessionPhotos.length) return;
     const last = sessionPhotos[sessionPhotos.length - 1];
-    openLastShotPreview(last, async () => {
-      await deletePhoto(last.id);
-      URL.revokeObjectURL(last.url);
-      sessionPhotos.pop();
-      updateLastShotUI();
-      toast('Foto eliminada.');
+    openLastShotPreview(last, {
+      onDelete: async () => {
+        await deletePhoto(last.id);
+        URL.revokeObjectURL(last.url);
+        sessionPhotos.pop();
+        updateLastShotUI();
+        toast('Foto eliminada.');
+      },
+      onRotated: (newUrl) => {
+        URL.revokeObjectURL(last.url);
+        last.url = newUrl;
+        updateLastShotUI();
+      },
     });
   });
 
@@ -359,13 +367,15 @@ export async function renderCameraView(container, folderId) {
   await startCamera();
 }
 
-function openLastShotPreview(photo, onDelete) {
+function openLastShotPreview(photo, { onDelete, onRotated }) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay last-shot-overlay';
   overlay.innerHTML = `
     <div class="modal last-shot-preview" role="dialog" aria-modal="true">
-      <img src="${photo.url}" alt="Última foto" />
+      <img src="${photo.url}" alt="Última foto" id="last-shot-preview-img" />
       <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-action="rotate-left" title="Rotar a la izquierda">↺</button>
+        <button type="button" class="btn btn-secondary" data-action="rotate-right" title="Rotar a la derecha">↻</button>
         <button type="button" class="btn btn-secondary" data-action="close">Cerrar</button>
         <button type="button" class="btn btn-danger" data-action="delete">Eliminar esta foto</button>
       </div>
@@ -373,9 +383,45 @@ function openLastShotPreview(photo, onDelete) {
   `;
   document.body.appendChild(overlay);
 
+  const img = overlay.querySelector('#last-shot-preview-img');
+
   function cleanup() {
     overlay.remove();
   }
+
+  async function rotate(direction) {
+    try {
+      const current = await getPhoto(photo.id);
+      if (!current) return;
+      const rotatedBlob = await rotateImageBlob(current.blob, direction);
+      if (current.driveFileId) {
+        // Ya se había subido a Drive: se REEMPLAZA el mismo archivo (no se
+        // deja en 'pending', porque eso la subiría de nuevo como archivo
+        // NUEVO — mismo bug de fotos duplicadas que ya se arregló antes en
+        // el checklist). driveModifiedTime se actualiza a mano para que la
+        // sincronización no la vuelva a bajar creyendo que Drive cambió.
+        try {
+          await updateFileContent(current.driveFileId, rotatedBlob);
+          await updatePhoto(photo.id, { blob: rotatedBlob, driveModifiedTime: new Date().toISOString() });
+        } catch (err) {
+          console.error('No se pudo actualizar la foto en Drive:', err);
+          await updatePhoto(photo.id, { blob: rotatedBlob });
+          toast('Se rotó en el teléfono, pero no se pudo actualizar en Drive (se reintenta después).');
+        }
+      } else {
+        // Todavía no se ha subido (o falló antes) — se deja como estaba
+        // (pending/error/null), la subida normal se encarga cuando toque.
+        await updatePhoto(photo.id, { blob: rotatedBlob });
+      }
+      const newUrl = URL.createObjectURL(rotatedBlob);
+      img.src = newUrl;
+      onRotated(newUrl);
+    } catch (err) {
+      console.error('No se pudo rotar la foto:', err);
+      toast('No se pudo rotar la foto.');
+    }
+  }
+
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) cleanup();
     const btn = e.target.closest('[data-action]');
@@ -385,5 +431,7 @@ function openLastShotPreview(photo, onDelete) {
       cleanup();
       onDelete();
     }
+    if (btn.dataset.action === 'rotate-left') rotate('left');
+    if (btn.dataset.action === 'rotate-right') rotate('right');
   });
 }

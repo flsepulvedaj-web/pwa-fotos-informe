@@ -332,7 +332,7 @@ export async function listDriveFiles(parentId) {
   const token = await signIn();
   const q = encodeURIComponent(`'${parentId}' in parents and mimeType contains 'image/' and trashed=false`);
   const res = await driveFetch(
-    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType)&pageSize=200&spaces=drive`,
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,modifiedTime)&pageSize=200&spaces=drive`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) {

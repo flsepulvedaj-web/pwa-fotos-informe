@@ -1,6 +1,7 @@
 import { getPhoto, updatePhoto, deletePhoto } from '../db.js';
 import { navigate } from '../router.js';
-import { promptDialog, confirmDialog, toast, escapeHTML, formatDate as fmtDate } from '../utils.js';
+import { promptDialog, confirmDialog, toast, escapeHTML, formatDate as fmtDate, rotateImageBlob } from '../utils.js';
+import { updateFileContent } from '../googleDrive.js';
 
 let currentURL = null;
 
@@ -25,6 +26,8 @@ export async function renderPhotoView(container, photoId) {
         <button class="icon-btn" id="btn-back">←</button>
         <span class="header-title">${escapeHTML(photo.title || 'Foto')}</span>
         <div class="header-actions">
+          <button class="icon-btn" id="btn-rotate-left" title="Rotar a la izquierda">↺</button>
+          <button class="icon-btn" id="btn-rotate-right" title="Rotar a la derecha">↻</button>
           <button class="icon-btn" id="btn-edit" title="Editar">✏️</button>
           <button class="icon-btn" id="btn-delete" title="Eliminar">🗑️</button>
         </div>
@@ -40,6 +43,32 @@ export async function renderPhotoView(container, photoId) {
   `;
 
   container.querySelector('#btn-back').addEventListener('click', () => navigate(backPath));
+
+  async function rotate(direction) {
+    try {
+      const rotatedBlob = await rotateImageBlob(photo.blob, direction);
+      if (photo.driveFileId) {
+        // Ya subida a Drive: se reemplaza el mismo archivo — dejarla en
+        // 'pending' la subiría de nuevo como archivo NUEVO (duplicado).
+        try {
+          await updateFileContent(photo.driveFileId, rotatedBlob);
+          await updatePhoto(photoId, { blob: rotatedBlob, driveModifiedTime: new Date().toISOString() });
+        } catch (err) {
+          console.error('No se pudo actualizar la foto en Drive:', err);
+          await updatePhoto(photoId, { blob: rotatedBlob });
+          toast('Se rotó en el teléfono, pero no se pudo actualizar en Drive (se reintenta después).');
+        }
+      } else {
+        await updatePhoto(photoId, { blob: rotatedBlob });
+      }
+      renderPhotoView(container, photoId);
+    } catch (err) {
+      console.error('No se pudo rotar la foto:', err);
+      toast('No se pudo rotar la foto.');
+    }
+  }
+  container.querySelector('#btn-rotate-left').addEventListener('click', () => rotate('left'));
+  container.querySelector('#btn-rotate-right').addEventListener('click', () => rotate('right'));
 
   container.querySelector('#btn-edit').addEventListener('click', async () => {
     const result = await promptDialog({

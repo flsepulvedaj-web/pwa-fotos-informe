@@ -181,23 +181,47 @@ export async function syncFoldersFromDrive(folder) {
  * nuevo la próxima vez.
  */
 export async function syncPhotosFromDrive(folder) {
-  if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return { downloaded: 0, deletedPhotoCount: 0, error: null };
+  if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return { downloaded: 0, updated: 0, deletedPhotoCount: 0, error: null };
   try {
     const [driveFiles, localPhotos] = await Promise.all([
       listDriveFiles(folder.driveFolderId),
       getPhotosByFolder(folder.id),
     ]);
     const driveFileIds = new Set(driveFiles.map((f) => f.id));
-    const knownDriveFileIds = new Set(localPhotos.map((p) => p.driveFileId).filter(Boolean));
-    const newFiles = driveFiles.filter((file) => !knownDriveFileIds.has(file.id));
+    const localByDriveId = new Map(localPhotos.filter((p) => p.driveFileId).map((p) => [p.driveFileId, p]));
+    const newFiles = driveFiles.filter((file) => !localByDriveId.has(file.id));
+    // Un archivo cuyo CONTENIDO se reemplazó en Drive (mismo id, ej. una
+    // foto que se corrigió de rotación editando el archivo directo) queda
+    // con `modifiedTime` más nuevo que el que se guardó la última vez que
+    // se bajó — sin esto, la foto vieja se quedaba pegada para siempre en
+    // el teléfono aunque Drive ya tuviera la corregida (bug real: fotos que
+    // se enderezaron en Drive seguían saliendo chuecas en la app y en los
+    // informes PDF, que arman el archivo con lo que hay guardado local).
+    const updatedFiles = driveFiles.filter((file) => {
+      const local = localByDriveId.get(file.id);
+      if (!local || !file.modifiedTime) return false;
+      const localTime = local.driveModifiedTime ? new Date(local.driveModifiedTime).getTime() : 0;
+      return new Date(file.modifiedTime).getTime() > localTime;
+    });
     let downloaded = 0;
     await mapWithConcurrency(newFiles, 4, async (file) => {
       try {
         const blob = await downloadDriveFile(file.id);
-        await addPhoto({ folderId: folder.id, blob, title: '', note: '', syncStatus: 'synced', driveFileId: file.id });
+        await addPhoto({ folderId: folder.id, blob, title: '', note: '', syncStatus: 'synced', driveFileId: file.id, driveModifiedTime: file.modifiedTime });
         downloaded++;
       } catch (err) {
         console.error(`Error descargando "${file.name}" de Drive:`, err);
+      }
+    });
+    let updated = 0;
+    await mapWithConcurrency(updatedFiles, 4, async (file) => {
+      try {
+        const blob = await downloadDriveFile(file.id);
+        const local = localByDriveId.get(file.id);
+        await updatePhoto(local.id, { blob, driveModifiedTime: file.modifiedTime });
+        updated++;
+      } catch (err) {
+        console.error(`Error actualizando "${file.name}" desde Drive:`, err);
       }
     });
 
@@ -217,10 +241,10 @@ export async function syncPhotosFromDrive(folder) {
       deletedPhotoCount++;
     }
 
-    return { downloaded, deletedPhotoCount, error: null };
+    return { downloaded, updated, deletedPhotoCount, error: null };
   } catch (err) {
     console.error('Error trayendo fotos desde Drive:', err);
-    return { downloaded: 0, deletedPhotoCount: 0, error: err.message || String(err) };
+    return { downloaded: 0, updated: 0, deletedPhotoCount: 0, error: err.message || String(err) };
   }
 }
 
@@ -236,7 +260,7 @@ let lastTreeSyncFinishedAt = 0;
 const TREE_SYNC_COOLDOWN_MS = 5000;
 
 export async function syncDriveTreeRecursive(folder, onProgress) {
-  const totals = { newCount: 0, deletedCount: 0, deletedPhotoCount: 0, recoveredCount: 0, downloaded: 0, error: null };
+  const totals = { newCount: 0, deletedCount: 0, deletedPhotoCount: 0, recoveredCount: 0, downloaded: 0, updated: 0, error: null };
   if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return totals;
   // Si Pancho entra y sale rápido de varias carpetas, cada apertura dispara
   // esta sincronización — sin este seguro, dos pasadas podían solaparse,
@@ -259,6 +283,7 @@ export async function syncDriveTreeRecursive(folder, onProgress) {
     totals.deletedPhotoCount += photoResult.deletedPhotoCount;
     totals.recoveredCount += folderResult.recoveredCount;
     totals.downloaded += photoResult.downloaded;
+    totals.updated += photoResult.updated;
     if (folderResult.error) totals.error = folderResult.error;
     if (photoResult.error) totals.error = photoResult.error;
     // Avisa después de cada carpeta (no solo al final) — en árboles grandes

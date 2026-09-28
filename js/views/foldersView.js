@@ -761,9 +761,9 @@ async function folderActionSheet(folder) {
   const pinAction = folder.pinned
     ? `<button class="sheet-action" data-action="unpin">📖 Quitar acceso directo</button>`
     : `<button class="sheet-action" data-action="pin">📖 Fijar como acceso directo</button>`;
-  // Solo se ofrece si la carpeta tiene la forma "Calle X"/"Piso Y" (una
-  // subcarpeta "Fotos ..." + subcarpetas numeradas) — en cualquier otra
-  // carpeta esta acción no tiene sentido y no se muestra.
+  // Solo se ofrece si la carpeta tiene subcarpetas numeradas (casas/deptos,
+  // como "Calle X"/"Piso Y") — en cualquier otra carpeta esta acción no
+  // tiene sentido y no se muestra.
   const aiAction = (await isAiAvanceGroup(folder))
     ? `<button class="sheet-action" data-action="ai-avance">🤖 Armar informe con IA</button>`
     : '';

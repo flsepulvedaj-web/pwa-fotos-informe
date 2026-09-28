@@ -77,3 +77,13 @@ export function fixedLabelFor(format, indexInPage) {
   if (!format.slotLabels) return null;
   return format.slotLabels[indexInPage] ?? null;
 }
+
+/**
+ * Igual que fixedLabelFor, pero una foto marcada `freeSlot` (ej. las de la
+ * página de fachadas de un informe combinado) siempre lleva descripción
+ * libre, aunque su posición tenga texto fijo en este formato.
+ */
+export function labelForPhoto(format, indexInPage, photo) {
+  if (photo && photo.freeSlot) return null;
+  return fixedLabelFor(format, indexInPage);
+}

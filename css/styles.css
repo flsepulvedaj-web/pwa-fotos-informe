@@ -987,6 +987,19 @@ button {
   padding: 12px;
 }
 
+.ai-avance-facade-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.ai-avance-facade-option input {
+  margin-top: 3px;
+}
+
 .all-photos-group {
   margin-bottom: 18px;
 }

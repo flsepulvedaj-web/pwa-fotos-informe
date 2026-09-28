@@ -1,4 +1,4 @@
-import { getChildFolders, getPhotosByFolder, getPhotoCountByFolder, getFolder } from './db.js';
+import { getChildFolders, getPhotosByFolder, getPhotoCountByFolder, getFolder, getPhotoGroupsRecursive } from './db.js';
 import { downscaleImageBlob, blobToDataURL, escapeHTML, toast } from './utils.js';
 import { signIn } from './googleDrive.js';
 import { openExportReviewScreen } from './views/exportView.js';
@@ -12,15 +12,52 @@ const AI_BACKEND_URL = 'https://vizor-reports-ai-avance.flsepulvedaj.workers.dev
 
 /**
  * ¿Esta carpeta está armada como grupo "Calle X" / "Piso Y" para el
- * informe de avance? Necesita una subcarpeta "Fotos ..." (las fotos
- * generales) y al menos una subcarpeta numerada (una casa o depto).
+ * informe de avance? Necesita al menos una subcarpeta numerada (una casa o
+ * depto). La subcarpeta "Fotos ..." (fotos generales) es opcional: si no
+ * existe, las 2 fotos generales salen de los propios deptos.
  */
 export async function isAiAvanceGroup(folder) {
   if (!folder || !folder.id) return false;
   const children = await getChildFolders(folder.id);
-  const hasFotosFolder = children.some((f) => /^fotos\s/i.test(f.name.trim()));
-  const hasNumberedUnit = children.some((f) => /^\d+$/.test(f.name.trim()));
-  return hasFotosFolder && hasNumberedUnit;
+  return children.some((f) => /^\d+$/.test(f.name.trim()));
+}
+
+/**
+ * Página de fachadas para un informe combinado: si todas las carpetas
+ * elegidas comparten carpeta madre (ej. los pisos de "Torre A") y esa madre
+ * tiene una hermana "Fachadas ..." (ej. "Fachadas Torre A"), devuelve sus
+ * fotos. Una página son exactamente 8 — con menos no se incluye, porque una
+ * página incompleta correría los textos fijos de todas las páginas que
+ * vienen después.
+ */
+async function findFacadeBlock(folders) {
+  const parentIds = new Set(folders.map((f) => f.parentId));
+  if (parentIds.size !== 1) return null;
+  const siblings = await getChildFolders([...parentIds][0]);
+  const facadeFolder = siblings.find(
+    (f) => /^fachadas?\b/i.test(f.name.trim()) && !folders.some((x) => x.id === f.id)
+  );
+  if (!facadeFolder) return null;
+  const groups = await getPhotoGroupsRecursive(facadeFolder.id);
+  const photos = groups.flatMap((g) => g.photos);
+  if (!photos.length) return null;
+  return { folder: facadeFolder, photos };
+}
+
+// Las fachadas van con descripción libre (no con el texto fijo de "depto
+// más/menos avanzado" que le tocaría por posición): `freeSlot` se lo indica
+// al armado del informe.
+function pickFacadePhotos(facade) {
+  return pickRandom(facade.photos, 8).map((p) => ({ ...p, title: facade.folder.name, freeSlot: true }));
+}
+
+function facadeOptionHTML(facade) {
+  if (!facade) return '';
+  const name = escapeHTML(facade.folder.name);
+  if (facade.photos.length < 8) {
+    return `<p class="modal-message">⚠️ "${name}" tiene solo ${facade.photos.length} foto(s) — hacen falta 8 para incluir la página de fachadas.</p>`;
+  }
+  return `<label class="ai-avance-facade-option"><input type="checkbox" id="include-facade" checked /> Incluir 8 fotos al azar de "${name}" al comienzo del informe</label>`;
 }
 
 function pickRandom(arr, n) {
@@ -95,8 +132,6 @@ async function callAiAvanceBackend(groupName, units, token) {
 function buildFinalPhotoArray({ groupName, generalPhotos, ranking, photosByUnit }) {
   const substitutions = [];
 
-  const generalPick = pickRandom(generalPhotos, 2).map((p) => ({ ...p, title: groupName }));
-
   function pickForSide(order, label) {
     const picked = [];
     const usedUnits = [];
@@ -122,6 +157,14 @@ function buildFinalPhotoArray({ groupName, generalPhotos, ranking, photosByUnit 
 
   const mostPicked = pickForSide(topHalf, 'Más avanzada');
   const leastPicked = pickForSide(bottomHalf.length ? bottomHalf : [ranking[ranking.length - 1]], 'Menos avanzada');
+
+  let generalSource = generalPhotos;
+  if (generalPhotos.length < 2) {
+    const usedIds = new Set([...mostPicked, ...leastPicked].map((p) => p.id));
+    generalSource = [...photosByUnit.values()].flat().filter((p) => !usedIds.has(p.id));
+    substitutions.push('No hay fotos generales ("Fotos …") — las 2 primeras fotos del bloque salieron de los deptos.');
+  }
+  const generalPick = pickRandom(generalSource, 2).map((p) => ({ ...p, title: groupName }));
 
   return { finalPhotos: [...generalPick, ...mostPicked, ...leastPicked], substitutions };
 }
@@ -197,7 +240,8 @@ function aiResultSheet({ groupName, ranking, reasoning, substitutions }) {
   });
 }
 
-function aiMultiResultSheet(results, skippedNames) {
+// Resuelve null si se cancela, o { includeFacade } si se confirma.
+function aiMultiResultSheet(results, skippedNames, facade) {
   const okCount = results.filter((r) => r.ok).length;
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
@@ -225,7 +269,7 @@ function aiMultiResultSheet(results, skippedNames) {
       })
       .join('');
     const skippedHTML = skippedNames.length
-      ? `<p class="modal-message">⚠️ No se revisaron (no tienen forma de Calle/Piso): ${skippedNames.map(escapeHTML).join(', ')}</p>`
+      ? `<p class="modal-message">⚠️ No se revisaron (no tienen casas/deptos numerados adentro): ${skippedNames.map(escapeHTML).join(', ')}</p>`
       : '';
 
     overlay.innerHTML = `
@@ -233,6 +277,7 @@ function aiMultiResultSheet(results, skippedNames) {
         <h2>Resultado de la IA (${okCount} de ${results.length})</h2>
         <div class="ai-avance-multi-list">${rowsHTML}</div>
         ${skippedHTML}
+        ${facadeOptionHTML(facade)}
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" data-action="cancel">Cancelar</button>
           <button type="button" class="btn btn-primary" data-action="confirm">Usar este resultado</button>
@@ -246,9 +291,10 @@ function aiMultiResultSheet(results, skippedNames) {
       resolve(result);
     }
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) cleanup(false);
+      if (e.target === overlay) cleanup(null);
       const btn = e.target.closest('[data-action]');
-      if (btn) cleanup(btn.dataset.action === 'confirm');
+      if (!btn) return;
+      cleanup(btn.dataset.action === 'confirm' ? { includeFacade: !!overlay.querySelector('#include-facade')?.checked } : null);
     });
   });
 }
@@ -275,9 +321,6 @@ async function compareGroup(folder, token) {
   }
 
   const generalPhotos = fotosFolder ? await getPhotosByFolder(fotosFolder.id) : [];
-  if (generalPhotos.length < 2) {
-    return { ok: false, folder, error: `"${fotosFolder ? fotosFolder.name : 'Fotos'}" necesita al menos 2 fotos generales.` };
-  }
 
   let result;
   try {
@@ -361,7 +404,7 @@ export async function openAiAvanceMultiFlow(folders) {
   const skippedNames = checks.filter(([, ok]) => !ok).map(([f]) => f.name);
 
   if (!validFolders.length) {
-    toast('Ninguna de las carpetas seleccionadas tiene la forma "Calle X"/"Piso Y" necesaria.');
+    toast('Ninguna de las carpetas seleccionadas tiene casas/deptos numerados adentro.');
     return;
   }
 
@@ -388,12 +431,14 @@ export async function openAiAvanceMultiFlow(folders) {
     return;
   }
 
-  const proceed = await aiMultiResultSheet(results, skippedNames);
-  if (!proceed) return;
+  const facade = await findFacadeBlock(succeeded.map((r) => r.folder));
+  const decision = await aiMultiResultSheet(results, skippedNames, facade);
+  if (!decision) return;
 
   localStorage.setItem(LAST_FORMAT_KEY, /^piso\s/i.test(succeeded[0].folder.name.trim()) ? 'depto-avance' : 'casas-avance');
 
-  const finalPhotos = succeeded.flatMap((r) => r.finalPhotos);
+  const facadePhotos = decision.includeFacade && facade ? pickFacadePhotos(facade) : [];
+  const finalPhotos = [...facadePhotos, ...succeeded.flatMap((r) => r.finalPhotos)];
   const combinedName = await pickCombinedName(succeeded.map((r) => r.folder));
 
   await openExportReviewScreen(finalPhotos, { name: combinedName, reportNumber: '', reportPeriod: '' });
@@ -419,8 +464,7 @@ export async function isSameAdvanceGroup(folder) {
   if (!folder || !folder.id) return false;
   const children = await getChildFolders(folder.id);
   const fotosFolder = children.find((f) => /^fotos\s/i.test(f.name.trim()));
-  if (!fotosFolder) return false;
-  const otherFolders = children.filter((f) => f.id !== fotosFolder.id);
+  const otherFolders = children.filter((f) => f.id !== fotosFolder?.id);
   const counts = await Promise.all(otherFolders.map((f) => getPhotoCountByFolder(f.id)));
   return counts.some((c) => c > 0);
 }
@@ -438,9 +482,6 @@ async function buildSameAdvanceBlock(folder) {
   const otherFolders = children.filter((f) => f.id !== fotosFolder?.id);
 
   const generalPhotos = fotosFolder ? await getPhotosByFolder(fotosFolder.id) : [];
-  if (generalPhotos.length < 2) {
-    return { ok: false, folder, error: `"${fotosFolder ? fotosFolder.name : 'Fotos'}" necesita al menos 2 fotos generales.` };
-  }
 
   const depotoPhotoArrays = await Promise.all(otherFolders.map((f) => getPhotosByFolder(f.id)));
   const depotoPhotos = depotoPhotoArrays.flat();
@@ -448,13 +489,22 @@ async function buildSameAdvanceBlock(folder) {
     return { ok: false, folder, error: 'No hay fotos de departamentos en esta carpeta todavía.' };
   }
 
-  const generalPick = pickRandom(generalPhotos, 2).map((p) => ({ ...p, title: folder.name }));
-  const depotoPick = pickRandom(depotoPhotos, Math.min(6, depotoPhotos.length));
+  if (generalPhotos.length >= 2) {
+    const generalPick = pickRandom(generalPhotos, 2).map((p) => ({ ...p, title: folder.name }));
+    const depotoPick = pickRandom(depotoPhotos, Math.min(6, depotoPhotos.length));
+    return { ok: true, folder, finalPhotos: [...generalPick, ...depotoPick], depotoCount: depotoPick.length };
+  }
 
-  return { ok: true, folder, finalPhotos: [...generalPick, ...depotoPick], depotoCount: depotoPick.length };
+  // Sin fotos generales ("Fotos …"): las 8 salen de los deptos, y las 2
+  // primeras (de descripción libre) llevan el nombre del piso.
+  const shuffled = pickRandom(depotoPhotos, depotoPhotos.length);
+  const generalPick = shuffled.slice(0, 2).map((p) => ({ ...p, title: folder.name }));
+  const depotoPick = shuffled.slice(2, 8);
+  return { ok: true, folder, finalPhotos: [...generalPick, ...depotoPick], depotoCount: depotoPick.length, noGeneral: true };
 }
 
-function sameAdvanceResultSheet(results) {
+// Resuelve null si se cancela, o { includeFacade } si se confirma.
+function sameAdvanceResultSheet(results, facade) {
   const okCount = results.filter((r) => r.ok).length;
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
@@ -468,7 +518,7 @@ function sameAdvanceResultSheet(results) {
           return `
             <div class="ai-avance-multi-row">
               <h3>${escapeHTML(r.folder.name)}</h3>
-              <p class="modal-message">✅ ${r.finalPhotos.length} fotos: 2 generales + ${r.depotoCount} de depto${short}</p>
+              <p class="modal-message">✅ ${r.finalPhotos.length} fotos: 2 ${r.noGeneral ? 'primeras (de deptos, sin carpeta de fotos generales)' : 'generales'} + ${r.depotoCount} de depto${short}</p>
             </div>
           `;
         }
@@ -485,6 +535,7 @@ function sameAdvanceResultSheet(results) {
       <div class="modal ai-avance-result ai-avance-multi" role="dialog" aria-modal="true">
         <h2>Mismo avance combinado (${okCount} de ${results.length})</h2>
         <div class="ai-avance-multi-list">${rowsHTML}</div>
+        ${facadeOptionHTML(facade)}
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" data-action="cancel">Cancelar</button>
           <button type="button" class="btn btn-primary" data-action="confirm">Usar este resultado</button>
@@ -498,9 +549,10 @@ function sameAdvanceResultSheet(results) {
       resolve(result);
     }
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) cleanup(false);
+      if (e.target === overlay) cleanup(null);
       const btn = e.target.closest('[data-action]');
-      if (btn) cleanup(btn.dataset.action === 'confirm');
+      if (!btn) return;
+      cleanup(btn.dataset.action === 'confirm' ? { includeFacade: !!overlay.querySelector('#include-facade')?.checked } : null);
     });
   });
 }
@@ -522,12 +574,14 @@ export async function openSameAdvanceMultiFlow(folders) {
     return;
   }
 
-  const proceed = await sameAdvanceResultSheet(results);
-  if (!proceed) return;
+  const facade = await findFacadeBlock(succeeded.map((r) => r.folder));
+  const decision = await sameAdvanceResultSheet(results, facade);
+  if (!decision) return;
 
   localStorage.setItem(LAST_FORMAT_KEY, /^piso\s/i.test(succeeded[0].folder.name.trim()) ? 'depto-iguales' : 'casas-iguales');
 
-  const finalPhotos = succeeded.flatMap((r) => r.finalPhotos);
+  const facadePhotos = decision.includeFacade && facade ? pickFacadePhotos(facade) : [];
+  const finalPhotos = [...facadePhotos, ...succeeded.flatMap((r) => r.finalPhotos)];
   const combinedName = await pickCombinedName(succeeded.map((r) => r.folder));
 
   await openExportReviewScreen(finalPhotos, { name: combinedName, reportNumber: '', reportPeriod: '' });

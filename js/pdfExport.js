@@ -1,5 +1,5 @@
 import { blobToDataURL } from './utils.js';
-import { fixedLabelFor } from './reportFormats.js';
+import { labelForPhoto } from './reportFormats.js';
 
 const PHOTOS_PER_PAGE = 8;
 const GRID_COLS = 2;
@@ -120,7 +120,7 @@ export async function buildObraReportPDF({ obra, reportNumber, period, photos, f
       doc.setFont(undefined, 'bold');
       doc.text(`Imagen ${imgNumber}:`, cellX + 1.5, capY + 4);
       doc.setFont(undefined, 'normal');
-      const caption = fixedLabelFor(format, i) ?? (photo.title || '');
+      const caption = labelForPhoto(format, i, photo) ?? (photo.title || '');
       const captionLines = doc.splitTextToSize(caption, colW - 3);
       doc.text(captionLines.slice(0, 2), cellX + 1.5, capY + 8);
     }

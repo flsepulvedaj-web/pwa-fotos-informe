@@ -1,7 +1,7 @@
 import { buildObraReportPDF, downloadBlob, sanitizeFilename } from '../pdfExport.js';
 import { updatePhoto, updateFolder, getPhotosByFolder } from '../db.js';
 import { escapeHTML, toast, sampleRandom } from '../utils.js';
-import { REPORT_FORMATS, getFormatById, fixedLabelFor } from '../reportFormats.js';
+import { REPORT_FORMATS, getFormatById, labelForPhoto } from '../reportFormats.js';
 
 const LAST_FORMAT_KEY = 'export-last-format';
 
@@ -158,7 +158,7 @@ export function openExportReviewScreen(photos, folder) {
       list.innerHTML = orderedPhotos
         .map((p, i) => {
           const slotIndex = i % 8;
-          const fixed = fixedLabelFor(format, slotIndex);
+          const fixed = labelForPhoto(format, slotIndex, p);
           const url = objectURLs.get(p.id);
           return `
             <div class="er-photo-row">
@@ -232,7 +232,9 @@ export function openExportReviewScreen(photos, folder) {
         captionDrafts.delete(currentPhoto.id);
       }
       objectURLs.set(chosen.id, URL.createObjectURL(chosen.blob));
-      orderedPhotos[idx] = chosen;
+      // Una foto de la página de fachadas (descripción libre) reemplazada por
+      // otra sigue siendo libre: eso también es del casillero.
+      orderedPhotos[idx] = currentPhoto.freeSlot ? { ...chosen, freeSlot: true } : chosen;
       renderList();
     });
 
@@ -276,7 +278,7 @@ export function openExportReviewScreen(photos, folder) {
 
       for (let i = 0; i < orderedPhotos.length; i++) {
         const photo = orderedPhotos[i];
-        const fixed = fixedLabelFor(format, i % 8);
+        const fixed = labelForPhoto(format, i % 8, photo);
         if (fixed) continue; // texto fijo: no es propiedad de la foto, no se guarda
         const value = (captionDrafts.get(photo.id) || '').trim();
         if (photo.title !== value) {

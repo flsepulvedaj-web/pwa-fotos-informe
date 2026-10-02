@@ -16,6 +16,29 @@ let facingMode = 'environment';
 const LENS_STORAGE_KEY = 'camera-lens-device-id';
 let backCameraDevices = null;
 
+// Sin pedir tamaño, los navegadores entregan 640x480 (en todos los
+// teléfonos) — muy chico para un informe. "Media" es el valor por defecto:
+// 4 veces más píxeles sin que los PDF de 200+ fotos pesen una barbaridad.
+// Son tamaños "ideales": si el teléfono no tiene exactamente ese, entrega el
+// más cercano.
+const QUALITY_STORAGE_KEY = 'camera-quality';
+const QUALITY_PRESETS = {
+  baja: { label: 'Baja', width: 640, height: 480 },
+  media: { label: 'Media', width: 1280, height: 960 },
+  alta: { label: 'Alta', width: 1920, height: 1440 },
+};
+const QUALITY_ORDER = ['baja', 'media', 'alta'];
+
+function getQualityKey() {
+  try {
+    const saved = localStorage.getItem(QUALITY_STORAGE_KEY);
+    if (QUALITY_PRESETS[saved]) return saved;
+  } catch {
+    // sin localStorage: queda el valor por defecto
+  }
+  return 'media';
+}
+
 async function probeBackCameras() {
   if (backCameraDevices) return backCameraDevices;
   if (!navigator.mediaDevices?.enumerateDevices) return (backCameraDevices = []);
@@ -98,6 +121,7 @@ export async function renderCameraView(container, folderId) {
       <div class="camera-topbar">
         <button class="icon-btn camera-close" id="btn-close">✕</button>
         <button class="btn btn-secondary camera-lens" id="btn-lens" hidden></button>
+        <button class="btn btn-secondary camera-lens" id="btn-quality" title="Calidad de la foto"></button>
         <button class="btn btn-primary camera-done" id="btn-done">Listo</button>
       </div>
 
@@ -209,6 +233,29 @@ export async function renderCameraView(container, folderId) {
     lensBtn.textContent = `Lente ${idx + 1}/${backCameraDevices.length}`;
   }
 
+  const qualityBtn = container.querySelector('#btn-quality');
+  function updateQualityButtonUI() {
+    qualityBtn.textContent = `Calidad: ${QUALITY_PRESETS[getQualityKey()].label}`;
+  }
+  updateQualityButtonUI();
+
+  qualityBtn.addEventListener('click', async () => {
+    const next = QUALITY_ORDER[(QUALITY_ORDER.indexOf(getQualityKey()) + 1) % QUALITY_ORDER.length];
+    try {
+      localStorage.setItem(QUALITY_STORAGE_KEY, next);
+    } catch {
+      // sin localStorage: vale solo mientras la cámara siga abierta
+    }
+    updateQualityButtonUI();
+    stopStream();
+    await startCamera();
+    // Informa el tamaño que el teléfono realmente entregó (puede ser menor
+    // al pedido si su cámara no llega a ese tamaño).
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const got = video.videoWidth ? ` — la cámara entrega ${video.videoWidth}x${video.videoHeight}` : '';
+    toast(`Calidad ${QUALITY_PRESETS[next].label}${got}`);
+  });
+
   lensBtn.addEventListener('click', async () => {
     if (!backCameraDevices || backCameraDevices.length <= 1) return;
     const currentId = activeStream?.getVideoTracks()[0]?.getSettings?.().deviceId;
@@ -246,10 +293,8 @@ export async function renderCameraView(container, folderId) {
         ? { deviceId: { exact: savedLensId } }
         : { facingMode: { ideal: facingMode } };
       if (!savedLensStillValid && facingMode === 'environment') videoConstraints.zoom = { ideal: 0.6 };
-      // Sin pedir tamaño, los navegadores entregan 640x480 (en todos los
-      // teléfonos) — muy chico para un informe. 1280x960 son 4 veces más
-      // píxeles sin que los PDF de 200+ fotos pesen una barbaridad.
-      const sizeConstraints = { width: { ideal: 1280 }, height: { ideal: 960 } };
+      const quality = QUALITY_PRESETS[getQualityKey()];
+      const sizeConstraints = { width: { ideal: quality.width }, height: { ideal: quality.height } };
       Object.assign(videoConstraints, sizeConstraints);
 
       try {

@@ -94,7 +94,11 @@ function renderLoginGate(container) {
       renderHomeView(container);
     } catch (err) {
       console.error(err);
-      toast('No se pudo iniciar sesión con Google.');
+      toast(
+        err.driveScopeMissing
+          ? 'Tienes que dejar marcada la casilla de Google Drive al iniciar sesión. Intenta de nuevo y marca todas las casillas.'
+          : 'No se pudo iniciar sesión con Google.'
+      );
     }
   });
 }
@@ -125,6 +129,7 @@ function paintModules(container, email, permissions) {
         <div class="home-no-access">
           <p>Todavía no tenés acceso a ningún módulo.</p>
           <p>Pedile acceso a Pancho o a la Jessi.</p>
+          <p class="home-no-access-hint">Si ya te lo dieron: cierra sesión (abajo), vuelve a entrar y marca todas las casillas que pida Google, sobre todo la de Drive.</p>
         </div>
       `}
       <button type="button" class="home-signout" id="btn-signout">${email} — Cerrar sesión</button>

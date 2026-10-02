@@ -141,6 +141,19 @@ export async function signIn() {
         reject(new Error(resp.error_description || resp.error));
         return;
       }
+      // Google deja destildar casillas en la pantalla de permisos: si quien
+      // inicia sesión deja sin marcar la de Drive, el correo igual llega
+      // (parece que entró bien) pero toda llamada a Drive falla después, y la
+      // app lo mostraba como "no tenés acceso". Se corta acá con un aviso
+      // claro, y se revoca lo concedido para que Google vuelva a preguntar.
+      const oauth2 = window.google.accounts.oauth2;
+      if (oauth2.hasGrantedAllScopes && !oauth2.hasGrantedAllScopes(resp, 'https://www.googleapis.com/auth/drive')) {
+        oauth2.revoke(resp.access_token, () => {});
+        const err = new Error('Falta el permiso de Google Drive');
+        err.driveScopeMissing = true;
+        reject(err);
+        return;
+      }
       storeToken(resp.access_token, resp.expires_in);
       resolve(accessToken);
     };

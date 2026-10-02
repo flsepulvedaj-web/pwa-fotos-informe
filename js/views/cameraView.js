@@ -286,35 +286,19 @@ export async function renderCameraView(container, folderId) {
 
   container.querySelector('#btn-shutter').addEventListener('click', async () => {
     if (!video.videoWidth) return;
+    // Se guarda el cuadro tal cual lo muestra el video (videoWidth/Height ya
+    // vienen con la orientación del teléfono aplicada), así la foto sale
+    // igual a lo que se ve en pantalla. NO rotar acá según
+    // screen.orientation.angle: con la rotación automática del teléfono
+    // activa (iPhone, Samsung, etc.) el cuadro ya viene derecho y rotarlo de
+    // nuevo dejaba chuecas todas las fotos horizontales — error real de la
+    // versión anterior. Si la rotación automática está desactivada, el
+    // teléfono no avisa cómo está sostenido: ahí sirven los botones ↺/↻.
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    // El cuadro crudo de getUserMedia viene en la orientación del SENSOR,
-    // no de la pantalla — como la cámara queda con la orientación libre
-    // (para poder fotografiar horizontal, ver unlockOrientation arriba),
-    // sacar una foto con el teléfono de lado guardaba el cuadro sin
-    // corregir: se veía bien en la pantalla en vivo, pero el archivo
-    // guardado quedaba girado 90°. Bug real encontrado en fotos de
-    // Verónica en Portal Santa Elvira (todas giradas, siempre igual).
-    // Se corrige rotando el canvas según cuánto está rotada la pantalla
-    // respecto de su orientación de fábrica (screen.orientation.angle).
-    const angle = ((screen.orientation?.angle ?? 0) % 360 + 360) % 360;
-    const rotated = angle === 90 || angle === 270;
-    canvas.width = rotated ? vh : vw;
-    canvas.height = rotated ? vw : vh;
-    const ctx = canvas.getContext('2d');
-    ctx.save();
-    if (angle === 90) {
-      ctx.translate(canvas.width, 0);
-      ctx.rotate(Math.PI / 2);
-    } else if (angle === 180) {
-      ctx.translate(canvas.width, canvas.height);
-      ctx.rotate(Math.PI);
-    } else if (angle === 270) {
-      ctx.translate(0, canvas.height);
-      ctx.rotate(-Math.PI / 2);
-    }
-    ctx.drawImage(video, 0, 0, vw, vh);
-    ctx.restore();
+    canvas.width = vw;
+    canvas.height = vh;
+    canvas.getContext('2d').drawImage(video, 0, 0, vw, vh);
     const blob = await canvasToBlob(canvas, 'image/jpeg', 0.9);
     const photo = await addPhoto({
       folderId,

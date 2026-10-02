@@ -246,6 +246,11 @@ export async function renderCameraView(container, folderId) {
         ? { deviceId: { exact: savedLensId } }
         : { facingMode: { ideal: facingMode } };
       if (!savedLensStillValid && facingMode === 'environment') videoConstraints.zoom = { ideal: 0.6 };
+      // Sin pedir tamaño, los navegadores entregan 640x480 (en todos los
+      // teléfonos) — muy chico para un informe. 1280x960 son 4 veces más
+      // píxeles sin que los PDF de 200+ fotos pesen una barbaridad.
+      const sizeConstraints = { width: { ideal: 1280 }, height: { ideal: 960 } };
+      Object.assign(videoConstraints, sizeConstraints);
 
       try {
         activeStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
@@ -253,7 +258,7 @@ export async function renderCameraView(container, folderId) {
         // El lente guardado ya no existe, o el teléfono rechaza la constraint
         // de zoom de plano (OverconstrainedError): reintentar con lo mínimo.
         activeStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facingMode } },
+          video: { facingMode: { ideal: facingMode }, ...sizeConstraints },
           audio: false,
         });
       }

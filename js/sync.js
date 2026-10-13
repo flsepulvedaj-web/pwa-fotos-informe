@@ -208,6 +208,34 @@ export async function syncFoldersFromDrive(folder) {
     const driveIds = new Set(driveChildren.map((f) => f.id));
     const knownDriveIds = new Set(localChildren.map((f) => f.driveFolderId).filter(Boolean));
     let newCount = 0;
+
+    // Carpetas creadas en la app que nunca llegaron a Drive (la creación
+    // falló, ej. sin señal o sesión vencida): hasta ahora quedaban solo en el
+    // teléfono para siempre — esta función solo sabía traer cosas de Drive.
+    // Si en Drive ya hay una con el mismo nombre se enlaza esa (evita
+    // duplicar); si no, se crea. Las de menos de 1 minuto se saltan: pueden
+    // estar todavía creándose en Drive desde createMatchingDriveFolder.
+    const sameName = (a, b) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+    let pushedCount = 0;
+    for (const lc of localChildren) {
+      if (lc.driveFolderId || !lc.name?.trim() || Date.now() - (lc.createdAt || 0) < 60000) continue;
+      try {
+        let match = driveChildren.find((dc) => !knownDriveIds.has(dc.id) && sameName(dc.name, lc.name));
+        if (!match) match = await createDriveFolder(folder.driveFolderId, lc.name.trim());
+        await updateFolder(lc.id, { driveFolderId: match.id, driveFolderName: match.name });
+        knownDriveIds.add(match.id);
+        driveIds.add(match.id);
+        // Las fotos que se tomaron en la carpeta mientras no estaba enlazada
+        // quedaron sin marca de subida: se marcan para que suban ahora.
+        for (const p of await getPhotosByFolder(lc.id)) {
+          if (!p.driveFileId && !p.syncStatus) await updatePhoto(p.id, { syncStatus: 'pending' });
+        }
+        pushedCount++;
+      } catch (err) {
+        console.error(`No se pudo subir la carpeta "${lc.name}" a Drive:`, err);
+      }
+    }
+
     for (const dc of driveChildren) {
       if (knownDriveIds.has(dc.id)) continue;
       const created = await createFolder(dc.name, folder.id, '');
@@ -231,10 +259,11 @@ export async function syncFoldersFromDrive(folder) {
       deletedCount++;
     }
 
-    return { foundNew: newCount > 0, newCount, deletedCount, recoveredCount, error: null, driveChildrenCount: driveChildren.length };
+    if (pushedCount) trySync();
+    return { foundNew: newCount > 0, newCount, pushedCount, deletedCount, recoveredCount, error: null, driveChildrenCount: driveChildren.length };
   } catch (err) {
     console.error('Error sincronizando carpetas desde Drive:', err);
-    return { foundNew: false, newCount: 0, deletedCount: 0, recoveredCount: 0, error: err.message || String(err) };
+    return { foundNew: false, newCount: 0, pushedCount: 0, deletedCount: 0, recoveredCount: 0, error: err.message || String(err) };
   }
 }
 
@@ -327,7 +356,7 @@ let lastTreeSyncFinishedAt = 0;
 const TREE_SYNC_COOLDOWN_MS = 5000;
 
 export async function syncDriveTreeRecursive(folder, onProgress) {
-  const totals = { newCount: 0, deletedCount: 0, deletedPhotoCount: 0, recoveredCount: 0, downloaded: 0, updated: 0, error: null };
+  const totals = { newCount: 0, pushedCount: 0, deletedCount: 0, deletedPhotoCount: 0, recoveredCount: 0, downloaded: 0, updated: 0, error: null };
   if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return totals;
   // Si Pancho entra y sale rápido de varias carpetas, cada apertura dispara
   // esta sincronización — sin este seguro, dos pasadas podían solaparse,
@@ -346,6 +375,7 @@ export async function syncDriveTreeRecursive(folder, onProgress) {
   async function walk(f) {
     const [folderResult, photoResult] = await Promise.all([syncFoldersFromDrive(f), syncPhotosFromDrive(f)]);
     totals.newCount += folderResult.newCount;
+    totals.pushedCount += folderResult.pushedCount || 0;
     totals.deletedCount += folderResult.deletedCount;
     totals.deletedPhotoCount += photoResult.deletedPhotoCount;
     totals.recoveredCount += folderResult.recoveredCount;
@@ -412,12 +442,14 @@ export async function deduplicatePhotosRecursive(folderId) {
  * recién creada en la app (para que la sincronización sea de ida y vuelta).
  */
 export async function createMatchingDriveFolder(localFolder, parentFolder) {
-  if (!parentFolder?.driveFolderId) return;
+  if (!parentFolder?.driveFolderId) return true;
   try {
     const created = await createDriveFolder(parentFolder.driveFolderId, localFolder.name);
     await updateFolder(localFolder.id, { driveFolderId: created.id, driveFolderName: created.name });
+    return true;
   } catch (err) {
     console.error('Error creando la carpeta en Drive:', err);
+    return false;
   }
 }
 

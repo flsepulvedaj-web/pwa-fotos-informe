@@ -230,6 +230,9 @@ export async function renderFoldersView(container, folderId) {
       if (totals.downloaded) {
         notices.push(`${totals.downloaded} foto${totals.downloaded === 1 ? '' : 's'} nueva${totals.downloaded === 1 ? '' : 's'} desde Drive`);
       }
+      if (totals.pushedCount) {
+        notices.push(`${totals.pushedCount} carpeta${totals.pushedCount === 1 ? '' : 's'} subida${totals.pushedCount === 1 ? '' : 's'} a Drive`);
+      }
       if (totals.deletedCount) {
         notices.push(`${totals.deletedCount} carpeta${totals.deletedCount === 1 ? '' : 's'} borrada${totals.deletedCount === 1 ? '' : 's'} (ya no estaba${totals.deletedCount === 1 ? '' : 'n'} en Drive)`);
       }
@@ -245,7 +248,7 @@ export async function renderFoldersView(container, folderId) {
       if (notices.length) toast(notices.join(' · '));
       else if (totals.error) toast(`Drive: ${totals.error}`);
 
-      if ((totals.newCount || totals.deletedCount || totals.deletedPhotoCount || totals.updated || totals.recoveredCount || totals.downloaded) && myViewToken === activeViewToken) {
+      if ((totals.newCount || totals.pushedCount || totals.deletedCount || totals.deletedPhotoCount || totals.updated || totals.recoveredCount || totals.downloaded) && myViewToken === activeViewToken) {
         renderFoldersView(container, folderId);
       }
     });
@@ -437,7 +440,8 @@ export async function renderFoldersView(container, folderId) {
     if (result && result.name) {
       const newFolder = await createFolder(result.name, folderId, result.description);
       if (currentFolder.driveFolderId) {
-        await createMatchingDriveFolder(newFolder, currentFolder);
+        const ok = await createMatchingDriveFolder(newFolder, currentFolder);
+        if (!ok) toast('La carpeta se creó en la app, pero no en Drive todavía. Se subirá sola la próxima vez que abras esta carpeta con sesión de Google.');
       }
       renderFoldersView(container, folderId);
     }

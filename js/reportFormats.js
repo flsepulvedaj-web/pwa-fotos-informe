@@ -84,6 +84,10 @@ export function fixedLabelFor(format, indexInPage) {
  * libre, aunque su posición tenga texto fijo en este formato.
  */
 export function labelForPhoto(format, indexInPage, photo) {
+  // `fixedLabel`: texto fijo propio de esa foto, por sobre el del formato
+  // (ej. un piso "todos iguales" dentro de un informe que usa el formato
+  // más/menos avanzado para el resto de los pisos).
+  if (photo && photo.fixedLabel) return photo.fixedLabel;
   if (photo && photo.freeSlot) return null;
   return fixedLabelFor(format, indexInPage);
 }

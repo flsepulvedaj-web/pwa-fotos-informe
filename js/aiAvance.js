@@ -248,6 +248,14 @@ function aiMultiResultSheet(results, skippedNames, facade) {
     overlay.className = 'modal-overlay';
     const rowsHTML = results
       .map((r) => {
+        if (r.ok && r.sameAdvance) {
+          return `
+            <div class="ai-avance-multi-row">
+              <h3>${escapeHTML(r.folder.name)}</h3>
+              ${singleUnitSummaryHTML(r)}
+            </div>
+          `;
+        }
         if (r.ok) {
           const most = r.ranking[0];
           const least = r.ranking[r.ranking.length - 1];
@@ -299,6 +307,41 @@ function aiMultiResultSheet(results, skippedNames, facade) {
   });
 }
 
+const SAME_ADVANCE_LABEL = 'Depto todos el mismo avance';
+
+async function buildSingleUnitBlock(folder, unitFolder, generalPhotos) {
+  const unitPhotos = await getPhotosByFolder(unitFolder.id);
+  const unitName = unitFolder.name.trim();
+  let generalPick;
+  let unitPick;
+  let noGeneral = false;
+  if (generalPhotos.length >= 2) {
+    generalPick = pickRandom(generalPhotos, 2);
+    unitPick = pickRandom(unitPhotos, Math.min(6, unitPhotos.length));
+  } else {
+    // Sin 2 fotos generales: las 2 primeras salen del propio depto.
+    noGeneral = true;
+    const shuffled = pickRandom(unitPhotos, unitPhotos.length);
+    generalPick = shuffled.slice(0, 2);
+    unitPick = shuffled.slice(2, 8);
+  }
+  const finalPhotos = [
+    ...generalPick.map((p) => ({ ...p, title: folder.name })),
+    ...unitPick.map((p) => ({ ...p, fixedLabel: SAME_ADVANCE_LABEL })),
+  ];
+  return { ok: true, folder, sameAdvance: true, unitName, unitCount: unitPick.length, noGeneral, finalPhotos, ranking: [unitName], reasoning: '', substitutions: [] };
+}
+
+function singleUnitSummaryHTML(r) {
+  const short = finalPhotosShort(r) ? ` <span class="ai-avance-multi-warn">(solo ${r.finalPhotos.length} de 8 fotos — la página queda incompleta)</span>` : '';
+  const general = r.noGeneral ? '2 primeras (del mismo depto, sin fotos generales)' : '2 generales';
+  return `<p class="modal-message">✅ Un solo depto con fotos (${escapeHTML(r.unitName)}): se toma como todos iguales — ${general} + ${r.unitCount} de ese depto${short}</p>`;
+}
+
+function finalPhotosShort(r) {
+  return r.finalPhotos.length < 8;
+}
+
 /**
  * Hace todo el trabajo de comparar UNA carpeta "Calle X"/"Piso Y" con IA y
  * armar sus 8 fotos — sin tocar la interfaz (nada de overlays ni
@@ -316,11 +359,18 @@ async function compareGroup(folder, token) {
   );
   const photographedUnits = unitsWithCounts.filter((u) => u.count > 0);
 
-  if (photographedUnits.length < 2) {
-    return { ok: false, folder, error: 'Necesita fotos de al menos 2 casas/deptos.' };
+  if (!photographedUnits.length) {
+    return { ok: false, folder, error: 'Necesita fotos de al menos 1 casa/depto.' };
   }
 
   const generalPhotos = fotosFolder ? await getPhotosByFolder(fotosFolder.id) : [];
+
+  // Un solo depto con fotos: no hay nada que comparar (así se fotografían los
+  // pisos donde todos los deptos van iguales) — se arma directo, sin llamar a
+  // la IA: 2 fotos generales + 6 del depto, con texto "todos el mismo avance".
+  if (photographedUnits.length === 1) {
+    return buildSingleUnitBlock(folder, photographedUnits[0].folder, generalPhotos);
+  }
 
   let result;
   try {
@@ -381,7 +431,9 @@ export async function openAiAvanceFlow(folder) {
     return;
   }
 
-  const proceed = await aiResultSheet({ groupName: folder.name, ranking: result.ranking, reasoning: result.reasoning, substitutions: result.substitutions });
+  const proceed = result.sameAdvance
+    ? await aiMultiResultSheet([result], [], null)
+    : await aiResultSheet({ groupName: folder.name, ranking: result.ranking, reasoning: result.reasoning, substitutions: result.substitutions });
   if (!proceed) return;
 
   localStorage.setItem(LAST_FORMAT_KEY, /^piso\s/i.test(folder.name.trim()) ? 'depto-avance' : 'casas-avance');

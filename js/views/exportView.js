@@ -234,7 +234,11 @@ export function openExportReviewScreen(photos, folder) {
       objectURLs.set(chosen.id, URL.createObjectURL(chosen.blob));
       // Una foto de la página de fachadas (descripción libre) reemplazada por
       // otra sigue siendo libre: eso también es del casillero.
-      orderedPhotos[idx] = currentPhoto.freeSlot ? { ...chosen, freeSlot: true } : chosen;
+      orderedPhotos[idx] = {
+        ...chosen,
+        ...(currentPhoto.freeSlot ? { freeSlot: true } : {}),
+        ...(currentPhoto.fixedLabel ? { fixedLabel: currentPhoto.fixedLabel } : {}),
+      };
       renderList();
     });
 

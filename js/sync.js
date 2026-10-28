@@ -243,6 +243,20 @@ export async function syncFoldersFromDrive(folder) {
       newCount++;
     }
 
+    // Carpetas que se renombraron en Drive: se enlazan por id (que no cambia
+    // al renombrar), así que antes la app seguía mostrando el nombre viejo
+    // para siempre. Solo se renombra si el nombre en Drive cambió respecto del
+    // último que se vio — así un nombre puesto a mano en la app no se pisa.
+    const driveNameById = new Map(driveChildren.map((f) => [f.id, f.name]));
+    let renamedCount = 0;
+    for (const lc of localChildren) {
+      if (!lc.driveFolderId || !driveNameById.has(lc.driveFolderId)) continue;
+      const current = driveNameById.get(lc.driveFolderId);
+      if (current === (lc.driveFolderName ?? lc.name)) continue;
+      await updateFolder(lc.id, { name: current, driveFolderName: current });
+      renamedCount++;
+    }
+
     let deletedCount = 0;
     let recoveredCount = 0;
     for (const lc of localChildren) {
@@ -260,10 +274,10 @@ export async function syncFoldersFromDrive(folder) {
     }
 
     if (pushedCount) trySync();
-    return { foundNew: newCount > 0, newCount, pushedCount, deletedCount, recoveredCount, error: null, driveChildrenCount: driveChildren.length };
+    return { foundNew: newCount > 0, newCount, pushedCount, renamedCount, deletedCount, recoveredCount, error: null, driveChildrenCount: driveChildren.length };
   } catch (err) {
     console.error('Error sincronizando carpetas desde Drive:', err);
-    return { foundNew: false, newCount: 0, pushedCount: 0, deletedCount: 0, recoveredCount: 0, error: err.message || String(err) };
+    return { foundNew: false, newCount: 0, pushedCount: 0, renamedCount: 0, deletedCount: 0, recoveredCount: 0, error: err.message || String(err) };
   }
 }
 
@@ -356,7 +370,7 @@ let lastTreeSyncFinishedAt = 0;
 const TREE_SYNC_COOLDOWN_MS = 5000;
 
 export async function syncDriveTreeRecursive(folder, onProgress) {
-  const totals = { newCount: 0, pushedCount: 0, deletedCount: 0, deletedPhotoCount: 0, recoveredCount: 0, downloaded: 0, updated: 0, error: null };
+  const totals = { newCount: 0, pushedCount: 0, renamedCount: 0, deletedCount: 0, deletedPhotoCount: 0, recoveredCount: 0, downloaded: 0, updated: 0, error: null };
   if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return totals;
   // Si Pancho entra y sale rápido de varias carpetas, cada apertura dispara
   // esta sincronización — sin este seguro, dos pasadas podían solaparse,
@@ -376,6 +390,7 @@ export async function syncDriveTreeRecursive(folder, onProgress) {
     const [folderResult, photoResult] = await Promise.all([syncFoldersFromDrive(f), syncPhotosFromDrive(f)]);
     totals.newCount += folderResult.newCount;
     totals.pushedCount += folderResult.pushedCount || 0;
+    totals.renamedCount += folderResult.renamedCount || 0;
     totals.deletedCount += folderResult.deletedCount;
     totals.deletedPhotoCount += photoResult.deletedPhotoCount;
     totals.recoveredCount += folderResult.recoveredCount;

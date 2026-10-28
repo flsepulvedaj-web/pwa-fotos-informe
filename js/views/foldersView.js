@@ -230,6 +230,9 @@ export async function renderFoldersView(container, folderId) {
       if (totals.downloaded) {
         notices.push(`${totals.downloaded} foto${totals.downloaded === 1 ? '' : 's'} nueva${totals.downloaded === 1 ? '' : 's'} desde Drive`);
       }
+      if (totals.renamedCount) {
+        notices.push(`${totals.renamedCount} carpeta${totals.renamedCount === 1 ? '' : 's'} renombrada${totals.renamedCount === 1 ? '' : 's'} (cambió el nombre en Drive)`);
+      }
       if (totals.pushedCount) {
         notices.push(`${totals.pushedCount} carpeta${totals.pushedCount === 1 ? '' : 's'} subida${totals.pushedCount === 1 ? '' : 's'} a Drive`);
       }
@@ -248,7 +251,7 @@ export async function renderFoldersView(container, folderId) {
       if (notices.length) toast(notices.join(' · '));
       else if (totals.error) toast(`Drive: ${totals.error}`);
 
-      if ((totals.newCount || totals.pushedCount || totals.deletedCount || totals.deletedPhotoCount || totals.updated || totals.recoveredCount || totals.downloaded) && myViewToken === activeViewToken) {
+      if ((totals.newCount || totals.pushedCount || totals.renamedCount || totals.deletedCount || totals.deletedPhotoCount || totals.updated || totals.recoveredCount || totals.downloaded) && myViewToken === activeViewToken) {
         renderFoldersView(container, folderId);
       }
     });

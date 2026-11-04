@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v136';
+const CACHE_VERSION = 'v137';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -34,6 +34,7 @@ const APP_SHELL = [
   './js/ganttChart.js',
   './js/checklistPdfExport.js',
   './js/permissions.js',
+  './js/phoneTilt.js',
   './js/obraSync.js',
   './js/tasacionExcelParser.js',
   './js/osm.js',

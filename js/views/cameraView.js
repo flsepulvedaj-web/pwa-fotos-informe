@@ -2,6 +2,7 @@ import { addPhoto, deletePhoto, getFolder } from '../db.js';
 import { navigate } from '../router.js';
 import { canvasToBlob, toast } from '../utils.js';
 import { trySync, rotatePhoto } from '../sync.js';
+import { startPhoneTilt } from '../phoneTilt.js';
 
 let activeStream = null;
 let facingMode = 'environment';
@@ -109,6 +110,8 @@ export async function renderCameraView(container, folderId) {
   let currentZoom = null;
 
   unlockOrientation();
+  const tilt = startPhoneTilt();
+  let tiltAsked = false;
 
   container.innerHTML = `
     <div class="camera-view">
@@ -143,6 +146,7 @@ export async function renderCameraView(container, folderId) {
   const onHashChange = () => {
     sessionPhotos.forEach((p) => URL.revokeObjectURL(p.url));
     stopStream();
+    tilt.stop();
     relockPortrait();
     window.removeEventListener('hashchange', onHashChange);
   };
@@ -160,6 +164,7 @@ export async function renderCameraView(container, folderId) {
   function goBack() {
     sessionPhotos.forEach((p) => URL.revokeObjectURL(p.url));
     stopStream();
+    tilt.stop();
     relockPortrait();
     navigate(folderId ? `/fotos/folder/${folderId}` : '/fotos');
   }
@@ -337,18 +342,37 @@ export async function renderCameraView(container, folderId) {
   container.querySelector('#btn-shutter').addEventListener('click', async () => {
     if (!video.videoWidth) return;
     // Se guarda el cuadro tal cual lo muestra el video (videoWidth/Height ya
-    // vienen con la orientación del teléfono aplicada), así la foto sale
-    // igual a lo que se ve en pantalla. NO rotar acá según
-    // screen.orientation.angle: con la rotación automática del teléfono
-    // activa (iPhone, Samsung, etc.) el cuadro ya viene derecho y rotarlo de
-    // nuevo dejaba chuecas todas las fotos horizontales — error real de la
-    // versión anterior. Si la rotación automática está desactivada, el
-    // teléfono no avisa cómo está sostenido: ahí sirven los botones ↺/↻.
+    // vienen con la orientación de la pantalla aplicada). NO rotar según
+    // screen.orientation.angle: con el giro automático activo el cuadro ya
+    // viene derecho y rotarlo de nuevo dejaba chuecas todas las fotos
+    // horizontales — error real de una versión anterior.
+    // Solo hay un caso que corregir: la pantalla se quedó en vertical (giro
+    // automático apagado o bloqueo de orientación del iPhone) pero el sensor
+    // dice que el teléfono está de lado. Ahí el video llega vertical y se gira
+    // al guardar. Si la pantalla ya gira sola (ancho > alto) no se toca nada.
+    // En iPhone el permiso del sensor se pide en este primer toque.
+    if (facingMode === 'environment' && !tiltAsked && !tilt.hasReading()) {
+      tiltAsked = true;
+      await tilt.request();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    canvas.width = vw;
-    canvas.height = vh;
-    canvas.getContext('2d').drawImage(video, 0, 0, vw, vh);
+    const screenIsPortrait = window.innerHeight > window.innerWidth;
+    const turn = facingMode === 'environment' && screenIsPortrait && vh > vw ? tilt.currentTurn() : null;
+    const ctx = canvas.getContext('2d');
+    if (turn === 'ccw' || turn === 'cw') {
+      canvas.width = vh;
+      canvas.height = vw;
+      if (turn === 'ccw') ctx.setTransform(0, -1, 1, 0, 0, vw);
+      else ctx.setTransform(0, 1, -1, 0, vh, 0);
+      ctx.drawImage(video, 0, 0, vw, vh);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    } else {
+      canvas.width = vw;
+      canvas.height = vh;
+      ctx.drawImage(video, 0, 0, vw, vh);
+    }
     const blob = await canvasToBlob(canvas, 'image/jpeg', 0.9);
     const photo = await addPhoto({
       folderId,

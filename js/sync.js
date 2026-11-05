@@ -87,6 +87,10 @@ export async function trySync() {
   syncing = true;
   try {
     const pending = await getPendingUploads();
+    if (pending.length) {
+      await holdScreenAwake();
+      notify();
+    }
     for (const photo of pending) {
       const folder = await getFolder(photo.folderId);
       if (!folder || !folder.driveFolderId) {
@@ -115,7 +119,35 @@ export async function trySync() {
     }
   } finally {
     syncing = false;
+    releaseScreen();
   }
+}
+
+// Mientras suben fotos se mantiene la pantalla encendida: en el teléfono la
+// app se pausa al bloquear la pantalla o salir de ella, y ahí la subida se
+// detiene hasta que se vuelve a abrir. Si el teléfono no soporta Wake Lock
+// (o lo rechaza) simplemente no pasa nada.
+let wakeLock = null;
+
+async function holdScreenAwake() {
+  try {
+    if (!('wakeLock' in navigator) || wakeLock || document.visibilityState !== 'visible') return;
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+    });
+  } catch {
+    wakeLock = null;
+  }
+}
+
+function releaseScreen() {
+  try {
+    wakeLock?.release();
+  } catch {
+    // ya estaba liberado
+  }
+  wakeLock = null;
 }
 
 // Girar una foto ya subida: se guarda al tiro en el teléfono y el reemplazo
@@ -590,5 +622,14 @@ export async function createMatchingDriveFolder(localFolder, parentFolder) {
 
 export function initSync() {
   window.addEventListener('online', () => trySync());
+  // Al volver a la app (desbloquear el teléfono, cambiar de app y volver) se
+  // retoma la subida y se vuelve a pedir la pantalla encendida, que el
+  // sistema libera cada vez que la app pasa a segundo plano.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (syncing) holdScreenAwake();
+    else trySync();
+    notify();
+  });
   if (navigator.onLine) trySync();
 }

@@ -1,6 +1,7 @@
 import { registerRoute, registerNotFound, startRouter, navigate } from './router.js';
-import { ROOT_ID } from './db.js';
-import { initSync } from './sync.js';
+import { ROOT_ID, getPendingUploads } from './db.js';
+import { initSync, onSyncChange } from './sync.js';
+import { isSignedIn } from './googleDrive.js';
 import { renderHomeView } from './views/homeView.js';
 import { renderFoldersView } from './views/foldersView.js';
 import { renderCameraView } from './views/cameraView.js';
@@ -35,6 +36,32 @@ import { renderTasacionEstudioView } from './views/tasacionEstudioView.js';
 const appEl = document.getElementById('app');
 
 initSync();
+
+// Aviso flotante con cuántas fotos faltan por subir a Drive. La subida solo
+// avanza con la app abierta, y sin este aviso nadie se entera de que falta.
+const uploadPill = document.createElement('div');
+uploadPill.className = 'upload-pill';
+uploadPill.hidden = true;
+document.body.appendChild(uploadPill);
+
+async function refreshUploadPill() {
+  try {
+    const pending = (await getPendingUploads()).length;
+    if (!pending) {
+      uploadPill.hidden = true;
+      return;
+    }
+    uploadPill.textContent = isSignedIn()
+      ? `⬆️ Subiendo ${pending} foto${pending === 1 ? '' : 's'} a Drive… deja la app abierta`
+      : `⚠️ ${pending} foto${pending === 1 ? '' : 's'} sin subir — falta iniciar sesión con Google`;
+    uploadPill.hidden = false;
+  } catch {
+    uploadPill.hidden = true;
+  }
+}
+onSyncChange(refreshUploadPill);
+refreshUploadPill();
+setInterval(refreshUploadPill, 5000);
 
 registerRoute('/', () => renderHomeView(appEl));
 

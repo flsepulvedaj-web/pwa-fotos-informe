@@ -151,6 +151,23 @@ async function pushPhotoContent(photoId) {
 const RECOVERED_FOLDER_NAME = 'Recuperadas de Drive';
 
 /**
+ * Las fotos que se tomaron en una carpeta mientras no estaba enlazada con
+ * Drive quedan sin marca de subida (syncStatus null) y trySync nunca las
+ * sube. Al enlazar la carpeta hay que marcarlas como pendientes. Devuelve
+ * cuántas se marcaron.
+ */
+export async function queueUnsyncedPhotos(folderId) {
+  let queued = 0;
+  for (const p of await getPhotosByFolder(folderId)) {
+    if (!p.driveFileId && !p.syncStatus) {
+      await updatePhoto(p.id, { syncStatus: 'pending' });
+      queued++;
+    }
+  }
+  return queued;
+}
+
+/**
  * Junta (recursivamente) las fotos de una carpeta y sus subcarpetas que
  * todavía no se terminaron de subir a Drive. Se usa justo antes de borrar
  * una carpeta que desapareció en Drive: esas fotos puntuales se rescatan
@@ -225,11 +242,7 @@ export async function syncFoldersFromDrive(folder) {
         await updateFolder(lc.id, { driveFolderId: match.id, driveFolderName: match.name });
         knownDriveIds.add(match.id);
         driveIds.add(match.id);
-        // Las fotos que se tomaron en la carpeta mientras no estaba enlazada
-        // quedaron sin marca de subida: se marcan para que suban ahora.
-        for (const p of await getPhotosByFolder(lc.id)) {
-          if (!p.driveFileId && !p.syncStatus) await updatePhoto(p.id, { syncStatus: 'pending' });
-        }
+        await queueUnsyncedPhotos(lc.id);
         pushedCount++;
       } catch (err) {
         console.error(`No se pudo subir la carpeta "${lc.name}" a Drive:`, err);

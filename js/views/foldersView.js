@@ -27,7 +27,7 @@ import {
   signIn,
   isSignedIn,
 } from '../googleDrive.js';
-import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder } from '../sync.js';
+import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder, queueUnsyncedPhotos } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow, openAiAvanceMultiFlow, openSameAdvanceMultiFlow } from '../aiAvance.js';
 import { isAdmin } from '../permissions.js';
 
@@ -633,11 +633,14 @@ export async function renderFoldersView(container, folderId) {
         const picked = await openFolderPicker(root ? root.id : undefined);
         if (picked) {
           await updateFolder(folder.id, { driveFolderId: picked.id, driveFolderName: picked.name });
+          const queued = await queueUnsyncedPhotos(folder.id);
+          if (queued) trySync();
+          const queuedNote = queued ? ` Subiendo ${queued} foto${queued === 1 ? '' : 's'} que ya estaban en la carpeta.` : '';
           if (!root) {
             setDriveRootFolder(picked);
-            toast(`"${picked.name}" quedó como tu carpeta raíz de Drive. Desde ahora el selector solo mostrará lo que haya dentro de ella.`);
+            toast(`"${picked.name}" quedó como tu carpeta raíz de Drive. Desde ahora el selector solo mostrará lo que haya dentro de ella.${queuedNote}`);
           } else {
-            toast(`Enlazada con "${picked.name}" de Drive.`);
+            toast(`Enlazada con "${picked.name}" de Drive.${queuedNote}`);
           }
           renderFoldersView(container, folderId);
         }

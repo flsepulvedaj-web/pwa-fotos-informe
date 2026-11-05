@@ -148,7 +148,7 @@ function showLoadingOverlay(message) {
   return overlay;
 }
 
-function summarySheet({ folderName, rows, facadeTotal, facadeShown, failedBatches }) {
+function summarySheet({ folderName, rows, facadeTotal, facadeUsable, facadeShown, failedBatches }) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -160,6 +160,7 @@ function summarySheet({ folderName, rows, facadeTotal, facadeShown, failedBatche
       <div class="modal ai-avance-result ai-avance-multi" role="dialog" aria-modal="true">
         <h2>Informe fotográfico — ${escapeHTML(folderName)}</h2>
         <p class="modal-message">La IA encontró <strong>${facadeTotal}</strong> foto${facadeTotal === 1 ? '' : 's'} de fachada${facadeShown < facadeTotal ? ` (se usan ${facadeShown})` : ''}, que van primero.</p>
+        ${facadeUsable < facadeTotal ? `<p class="modal-message">${facadeTotal - facadeUsable} de ellas se quedan en su carpeta, porque quitarlas la dejaría con menos fotos de las que le tocan.</p>` : ''}
         ${failedBatches ? `<p class="modal-message">⚠️ ${failedBatches} grupo${failedBatches === 1 ? '' : 's'} de fotos no se pudo revisar; esas fotos quedan en su carpeta.</p>` : ''}
         <ul class="ai-avance-substitutions">
           ${facadeShown ? `<li><strong>${FACADE_TITLE}</strong>: ${facadeShown} fotos</li>` : ''}
@@ -232,8 +233,19 @@ export async function openAutoPhotoReportFlow(folder) {
     }
   }
 
-  const facadeIds = new Set(facades.map((p) => p.id));
-  const facadeShown = spreadPick(facades, takeCountFor(facades.length)).map((p) => ({ ...p, title: FACADE_TITLE, freeSlot: true }));
+  // Una carpeta no pierde fotos por fachada si eso la dejaría con menos de las
+  // que se mostrarían de ella (8, o todas si tiene menos de 8): así carpetas
+  // chicas como "Estanque de Agua" siempre salen con sus fotos, aunque la IA
+  // las considere fachada.
+  const flaggedIds = new Set(facades.map((p) => p.id));
+  const usableFacades = [];
+  for (const g of groups) {
+    const flagged = g.photos.filter((p) => flaggedIds.has(p.id));
+    const canGive = Math.max(0, g.photos.length - Math.min(8, g.photos.length));
+    usableFacades.push(...spreadPick(flagged, Math.min(flagged.length, canGive)));
+  }
+  const facadeIds = new Set(usableFacades.map((p) => p.id));
+  const facadeShown = spreadPick(usableFacades, takeCountFor(usableFacades.length)).map((p) => ({ ...p, title: FACADE_TITLE, freeSlot: true }));
 
   const rows = [];
   const folderPhotos = []; // un arreglo de fotos por carpeta
@@ -252,6 +264,7 @@ export async function openAutoPhotoReportFlow(folder) {
     folderName: folder.name,
     rows,
     facadeTotal: facades.length,
+    facadeUsable: usableFacades.length,
     facadeShown: facadeShown.length,
     failedBatches,
   });

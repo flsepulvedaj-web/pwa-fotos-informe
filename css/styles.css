@@ -240,7 +240,9 @@ button {
 .folder-photo-badge {
   position: absolute;
   top: 6px;
-  right: 8px;
+  /* Centrado arriba de la carpeta: a la derecha tapaba los 3 puntitos (⋮). */
+  left: 50%;
+  transform: translateX(-50%);
   background: #2e7d32;
   color: #fff;
   font-size: 10px;

@@ -486,6 +486,25 @@ export async function trashDriveFile(fileId) {
   }
 }
 
+/**
+ * Mueve un archivo de Drive de una carpeta a otra (mismo id: no se copia ni
+ * se vuelve a subir).
+ */
+export async function moveDriveFile(fileId, fromFolderId, toFolderId) {
+  const token = await signIn();
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${encodeURIComponent(toFolderId)}&removeParents=${encodeURIComponent(fromFolderId)}&fields=id,parents`;
+  const res = await driveFetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Error moviendo archivo en Drive (${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
 /** Reemplaza el contenido de un archivo de Drive que ya existe. */
 export async function updateFileContent(fileId, blob) {
   const token = await signIn();

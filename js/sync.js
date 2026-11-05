@@ -1,5 +1,5 @@
 import { ROOT_ID, getPendingUploads, getFolder, getChildFolders, createFolder, updateFolder, updatePhoto, getPhotosByFolder, addPhoto, deletePhoto, deleteFolderRecursive, getPhoto, getContentDirtyPhotos } from './db.js';
-import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile, isSignedIn, updateFileContent } from './googleDrive.js';
+import { uploadFile, listDriveFolders, createDriveFolder, listDriveFiles, downloadDriveFile, isSignedIn, updateFileContent, moveDriveFile } from './googleDrive.js';
 import { rotateImageBlob } from './utils.js';
 
 let syncing = false;
@@ -180,6 +180,46 @@ async function pushPhotoContent(photoId) {
 }
 
 const RECOVERED_FOLDER_NAME = 'Recuperadas de Drive';
+
+/**
+ * Mueve fotos a otra carpeta de la app. Si la foto ya está en Drive y las dos
+ * carpetas están enlazadas, también mueve el archivo en Drive. Mover solo en
+ * el teléfono (lo que se hacía antes) no servía: la carpeta de destino no
+ * encontraba el archivo en su lista de Drive y borraba la foto, y la de
+ * origen lo volvía a bajar. Si falla el movimiento en Drive, la foto se queda
+ * donde estaba. Devuelve { moved, driveFailed }.
+ */
+export async function movePhotosToFolder(ids, targetFolderId) {
+  const target = targetFolderId === ROOT_ID ? null : await getFolder(targetFolderId);
+  const targetLinked = !!target?.driveFolderId;
+  let moved = 0;
+  let driveFailed = 0;
+  let anyPending = false;
+  for (const id of ids) {
+    const photo = await getPhoto(id);
+    if (!photo || photo.folderId === targetFolderId) continue;
+    const changes = { folderId: targetFolderId };
+    if (photo.driveFileId) {
+      const source = await getFolder(photo.folderId);
+      if (targetLinked && source?.driveFolderId && source.driveFolderId !== target.driveFolderId) {
+        try {
+          await moveDriveFile(photo.driveFileId, source.driveFolderId, target.driveFolderId);
+        } catch (err) {
+          console.error('No se pudo mover la foto en Drive:', err);
+          driveFailed++;
+          continue;
+        }
+      }
+    } else if (targetLinked && !photo.syncStatus) {
+      changes.syncStatus = 'pending';
+      anyPending = true;
+    }
+    await updatePhoto(id, changes);
+    moved++;
+  }
+  if (anyPending) trySync();
+  return { moved, driveFailed };
+}
 
 /**
  * Se llama al enlazar una carpeta con una carpeta de Drive. Además de marcar

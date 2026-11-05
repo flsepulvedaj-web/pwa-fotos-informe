@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v142';
+const CACHE_VERSION = 'v143';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [

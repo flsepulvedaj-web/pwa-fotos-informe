@@ -11,7 +11,6 @@ import {
   getPhotoCountByFolderRecursive,
   getAllFolders,
   getPinnedFolders,
-  movePhotos,
   deletePhoto,
   addPhoto,
 } from '../db.js';
@@ -27,7 +26,7 @@ import {
   signIn,
   isSignedIn,
 } from '../googleDrive.js';
-import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder, queuePhotosForNewDriveLink, getLastUploadError } from '../sync.js';
+import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder, queuePhotosForNewDriveLink, movePhotosToFolder, getLastUploadError } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow, openAiAvanceMultiFlow, openSameAdvanceMultiFlow } from '../aiAvance.js';
 import { isAdmin } from '../permissions.js';
 
@@ -613,8 +612,10 @@ export async function renderFoldersView(container, folderId) {
     if (!selection.size) return;
     const targetId = await folderPickerDialog(folderId);
     if (targetId === null) return;
-    await movePhotos([...selection], targetId);
-    toast('Fotos movidas.');
+    const { driveFailed } = await movePhotosToFolder([...selection], targetId);
+    toast(driveFailed
+      ? `Fotos movidas. ${driveFailed} no se pudieron mover en Drive y quedaron donde estaban (revisa la conexión e inténtalo de nuevo).`
+      : 'Fotos movidas.');
     renderFoldersView(container, folderId);
   });
 

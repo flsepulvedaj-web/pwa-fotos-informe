@@ -182,6 +182,36 @@ async function pushPhotoContent(photoId) {
 const RECOVERED_FOLDER_NAME = 'Recuperadas de Drive';
 
 /**
+ * Se llama al enlazar una carpeta con una carpeta de Drive. Además de marcar
+ * las fotos que nunca se subieron (queueUnsyncedPhotos), vuelve a marcar las
+ * que ya tienen driveFileId pero cuyo archivo NO está en esa carpeta de Drive
+ * (se subieron a otro lado, ej. por haber enlazado mal antes). Si no, la
+ * sincronización las tomaría por borradas en Drive y las eliminaría del
+ * teléfono. Las copias que quedaron en el lugar equivocado no se tocan.
+ * Devuelve cuántas fotos quedaron pendientes de subir.
+ */
+export async function queuePhotosForNewDriveLink(folderId, driveFolderId) {
+  let driveIds = null;
+  try {
+    driveIds = new Set((await listDriveFiles(driveFolderId)).map((f) => f.id));
+  } catch (err) {
+    // Sin poder ver la carpeta de Drive no se sabe cuáles faltan: solo se
+    // marcan las que nunca se subieron.
+    console.warn('No se pudo listar la carpeta de Drive al enlazar:', err);
+  }
+  let queued = 0;
+  if (driveIds) {
+    for (const p of await getPhotosByFolder(folderId)) {
+      if (p.driveFileId && !driveIds.has(p.driveFileId)) {
+        await updatePhoto(p.id, { driveFileId: null, driveModifiedTime: null, contentDirty: false, syncStatus: 'pending' });
+        queued++;
+      }
+    }
+  }
+  return queued + (await queueUnsyncedPhotos(folderId));
+}
+
+/**
  * Las fotos que se tomaron en una carpeta mientras no estaba enlazada con
  * Drive quedan sin marca de subida (syncStatus null) y trySync nunca las
  * sube. Al enlazar la carpeta hay que marcarlas como pendientes. Devuelve

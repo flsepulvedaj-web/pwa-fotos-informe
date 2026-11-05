@@ -27,7 +27,7 @@ import {
   signIn,
   isSignedIn,
 } from '../googleDrive.js';
-import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder, queueUnsyncedPhotos, getLastUploadError } from '../sync.js';
+import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder, queuePhotosForNewDriveLink, getLastUploadError } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow, openAiAvanceMultiFlow, openSameAdvanceMultiFlow } from '../aiAvance.js';
 import { isAdmin } from '../permissions.js';
 
@@ -632,9 +632,13 @@ export async function renderFoldersView(container, folderId) {
       try {
         const root = getDriveRootFolder();
         const picked = await openFolderPicker(root ? root.id : undefined);
-        if (picked) {
+        // Confirmar con los nombres a la vista: en el selector es fácil
+        // marcar una carpeta más grande (ej. PROYECTOS) sin darse cuenta, y
+        // todas las fotos terminan sueltas ahí.
+        const confirmed = picked && await confirmDialog(`¿Enlazar "${folder.name}" con la carpeta "${picked.name}" de Drive? Revisa que sea la carpeta de esta obra o zona y no una más grande (por ejemplo PROYECTOS).`);
+        if (confirmed) {
           await updateFolder(folder.id, { driveFolderId: picked.id, driveFolderName: picked.name });
-          const queued = await queueUnsyncedPhotos(folder.id);
+          const queued = await queuePhotosForNewDriveLink(folder.id, picked.id);
           if (queued) trySync();
           const queuedNote = queued ? ` Subiendo ${queued} foto${queued === 1 ? '' : 's'} que ya estaban en la carpeta.` : '';
           if (!root) {

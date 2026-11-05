@@ -177,7 +177,9 @@ export async function queueUnsyncedPhotos(folderId) {
 async function collectUnsyncedPhotosRecursive(folderId, acc = []) {
   const photos = await getPhotosByFolder(folderId);
   for (const p of photos) {
-    if (p.syncStatus === 'pending' || p.syncStatus === 'error') acc.push(p);
+    // Sin driveFileId ni marca: foto tomada antes de enlazar la carpeta, la
+    // única copia está en el teléfono.
+    if (p.syncStatus === 'pending' || p.syncStatus === 'error' || (!p.driveFileId && !p.syncStatus)) acc.push(p);
   }
   const children = await getChildFolders(folderId);
   for (const child of children) {
@@ -304,6 +306,10 @@ export async function syncFoldersFromDrive(folder) {
 export async function syncPhotosFromDrive(folder) {
   if (!folder?.driveFolderId || !navigator.onLine || !isSignedIn()) return { downloaded: 0, updated: 0, deletedPhotoCount: 0, error: null };
   try {
+    // Fotos tomadas antes de enlazar la carpeta (o enlazada con una versión
+    // vieja de la app, que no las marcaba) siguen sin marca de subida: acá se
+    // marcan para que suban. Las que ya vienen de Drive tienen driveFileId.
+    if (await queueUnsyncedPhotos(folder.id)) trySync();
     const [driveFiles, localPhotos] = await Promise.all([
       listDriveFiles(folder.driveFolderId),
       getPhotosByFolder(folder.id),

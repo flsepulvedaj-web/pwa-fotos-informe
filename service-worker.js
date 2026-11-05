@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v144';
+const CACHE_VERSION = 'v145';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -16,6 +16,7 @@ const APP_SHELL = [
   './js/reportFormats.js',
   './js/protocolTemplates.js',
   './js/aiAvance.js',
+  './js/aiPhotoReport.js',
   './js/controlChecklistTemplates.js',
   './js/controlScheduleParser.js',
   './js/controlDashboard.js',

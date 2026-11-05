@@ -28,6 +28,7 @@ import {
 } from '../googleDrive.js';
 import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder, queuePhotosForNewDriveLink, movePhotosToFolder, getLastUploadError } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow, openAiAvanceMultiFlow, openSameAdvanceMultiFlow } from '../aiAvance.js';
+import { isPhotoReportGroup, openAutoPhotoReportFlow } from '../aiPhotoReport.js';
 import { isAdmin } from '../permissions.js';
 
 let objectURLs = [];
@@ -685,6 +686,9 @@ export async function renderFoldersView(container, folderId) {
     } else if (action === 'ai-avance') {
       await openAiAvanceFlow(folder);
       renderFoldersView(container, folderId);
+    } else if (action === 'auto-photo-report') {
+      await openAutoPhotoReportFlow(folder);
+      renderFoldersView(container, folderId);
     } else if (action === 'dedupe') {
       toast('Buscando duplicados…');
       const removed = await deduplicatePhotosRecursive(folder.id);
@@ -783,6 +787,11 @@ async function folderActionSheet(folder) {
   const aiAction = (await isAiAvanceGroup(folder))
     ? `<button class="sheet-action" data-action="ai-avance">🤖 Armar informe con IA</button>`
     : '';
+  // Informe fotográfico de toda la obra: 16 u 8 fotos por carpeta + fachadas
+  // detectadas por la IA. Se ofrece en carpetas con 2 o más subcarpetas con fotos.
+  const photoReportAction = (await isPhotoReportGroup(folder))
+    ? `<button class="sheet-action" data-action="auto-photo-report">🏗️ Informe fotográfico automático (IA)</button>`
+    : '';
 
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
@@ -793,6 +802,7 @@ async function folderActionSheet(folder) {
         <button class="sheet-action" data-action="edit">✏️ Editar (nombre / descripción)</button>
         <button class="sheet-action" data-action="export">📄 Exportar PDF</button>
         ${aiAction}
+        ${photoReportAction}
         ${pinAction}
         ${driveAction}
         ${folder.driveFolderId ? '<button class="sheet-action" data-action="dedupe">🧹 Quitar fotos duplicadas</button>' : ''}

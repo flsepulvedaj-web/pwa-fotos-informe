@@ -99,9 +99,35 @@ registerNotFound(() => navigate('/'));
 startRouter();
 
 if ('serviceWorker' in navigator) {
+  // Antes, después de publicar una versión nueva había que cerrar y abrir la
+  // app dos veces para que la usara (la página ya cargada seguía con el
+  // código viejo). Ahora, cuando la versión nueva toma el control, se recarga
+  // sola una vez. Solo en pantallas sin nada que se pueda perder (inicio y
+  // fotos, menos la cámara); en otras queda para la próxima vez que se abra.
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloadedForUpdate = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloadedForUpdate) return;
+    const hash = location.hash;
+    const safeToReload = (hash === '' || hash === '#/' || hash.startsWith('#/fotos')) && !hash.includes('/camera');
+    if (!safeToReload) return;
+    reloadedForUpdate = true;
+    location.reload();
+  });
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js').catch((err) => {
-      console.error('Error registrando el Service Worker:', err);
-    });
+    navigator.serviceWorker
+      .register('service-worker.js')
+      .then((registration) => {
+        // Las apps instaladas casi nunca se cierran del todo: buscar versión
+        // nueva también cada vez que la app vuelve a primer plano.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') registration.update().catch(() => {});
+        });
+        registration.update().catch(() => {});
+      })
+      .catch((err) => {
+        console.error('Error registrando el Service Worker:', err);
+      });
   });
 }

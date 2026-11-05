@@ -27,7 +27,7 @@ import {
   signIn,
   isSignedIn,
 } from '../googleDrive.js';
-import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder, queueUnsyncedPhotos } from '../sync.js';
+import { trySync, syncDriveTreeRecursive, deduplicatePhotosRecursive, createMatchingDriveFolder, queueUnsyncedPhotos, getLastUploadError } from '../sync.js';
 import { isAiAvanceGroup, openAiAvanceFlow, openAiAvanceMultiFlow, openSameAdvanceMultiFlow } from '../aiAvance.js';
 import { isAdmin } from '../permissions.js';
 
@@ -89,8 +89,9 @@ export async function renderFoldersView(container, folderId) {
   // aparte: se muestra igual aunque no haya ninguna foto pendiente.
   const driveDisconnected = !!currentFolder.driveFolderId && !isSignedIn();
   const showSyncBanner = retryBannerCount > 0 || driveDisconnected;
+  const lastUploadError = errorPhotosCount > 0 ? getLastUploadError() : null;
   const syncBannerMessage = retryBannerCount > 0
-    ? `⚠️ ${retryBannerCount} foto(s) no se ${retryBannerCount === 1 ? 'ha' : 'han'} subido a Drive todavía${needsReconnect ? ' (hay que reconectar)' : ''}.`
+    ? `⚠️ ${retryBannerCount} foto(s) no se ${retryBannerCount === 1 ? 'ha' : 'han'} subido a Drive todavía${needsReconnect ? ' (hay que reconectar)' : ''}.${lastUploadError ? ` <small>Motivo: ${escapeHTML(lastUploadError)}</small>` : ''}`
     : '☁️ Sesión de Drive vencida — toca "Reintentar" para traer los últimos cambios (carpetas borradas o nuevas, fotos).';
   const selection = new Set();
   let selectMode = false;

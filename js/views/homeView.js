@@ -133,8 +133,22 @@ function paintModules(container, email, permissions) {
         </div>
       `}
       <button type="button" class="home-signout" id="btn-signout">${email} — Cerrar sesión</button>
+      <p class="home-version" id="home-version"></p>
     </div>
   `;
+
+  // La versión sale del nombre del caché del service worker (ej. ...-v139),
+  // así no hay que mantenerla en dos lugares. Sirve para saber si un teléfono
+  // ya cargó la última actualización.
+  try {
+    caches.keys().then((keys) => {
+      const key = keys.find((k) => k.startsWith('fotos-informe-shell-'));
+      const el = container.querySelector('#home-version');
+      if (key && el) el.textContent = `Versión ${key.split('-').pop()}`;
+    });
+  } catch {
+    // sin Cache API: simplemente no se muestra
+  }
 
   container.querySelectorAll('.module-card').forEach((card) => {
     const hub = HUBS.find((h) => h.id === card.dataset.hub);

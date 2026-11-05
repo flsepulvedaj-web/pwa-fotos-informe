@@ -33,6 +33,35 @@ async function mapWithConcurrency(items, limit, fn) {
   return results;
 }
 
+// El motivo del último fallo al subir una foto queda guardado para mostrarlo
+// en el aviso de la carpeta: sin esto, "no sube" no dice si es sesión, permiso
+// o señal, y hay que adivinar.
+const LAST_UPLOAD_ERROR_KEY = 'sync-last-upload-error';
+
+function rememberUploadError(err) {
+  try {
+    localStorage.setItem(LAST_UPLOAD_ERROR_KEY, String(err?.message || err).slice(0, 200));
+  } catch {
+    // sin localStorage: solo se pierde el detalle
+  }
+}
+
+function clearUploadError() {
+  try {
+    localStorage.removeItem(LAST_UPLOAD_ERROR_KEY);
+  } catch {
+    // nada que limpiar
+  }
+}
+
+export function getLastUploadError() {
+  try {
+    return localStorage.getItem(LAST_UPLOAD_ERROR_KEY);
+  } catch {
+    return null;
+  }
+}
+
 function photoFilename(photo) {
   const d = new Date(photo.createdAt);
   const pad = (n) => String(n).padStart(2, '0');
@@ -73,8 +102,10 @@ export async function trySync() {
         // fuera nueva cada vez que se abría la carpeta — duplicándola.
         const uploaded = await uploadFile(folder.driveFolderId, photo.blob, photoFilename(photo));
         await updatePhoto(photo.id, { syncStatus: 'synced', driveFileId: uploaded.id });
+        clearUploadError();
       } catch (err) {
         console.error('Error subiendo foto a Drive:', err);
+        rememberUploadError(err);
         await updatePhoto(photo.id, { syncStatus: 'error' });
       }
       notify();

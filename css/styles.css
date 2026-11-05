@@ -2829,6 +2829,21 @@ button {
   text-align: center;
 }
 
+.home-version {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.sync-retry-banner small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  opacity: 0.85;
+  word-break: break-word;
+}
+
 /* ---------- Administrar usuarios (permisos) ---------- */
 
 .permissions-hint {

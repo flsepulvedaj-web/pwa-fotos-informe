@@ -82,7 +82,7 @@ export async function renderQcProjectView(container, projectId) {
       </nav>
       <main class="view-content qc-content" id="qc-content">${renderTab()}</main>
     `;
-    container.querySelector('#btn-back').addEventListener('click', () => navigate('/calidad'));
+    container.querySelector('#btn-back').addEventListener('click', () => navigate(p.obraId ? `/control/obra/${p.obraId}/calidad` : '/calidad'));
     container.querySelectorAll('.qc-tab').forEach((b) =>
       b.addEventListener('click', async () => {
         tab = b.dataset.tab;

@@ -91,6 +91,7 @@ registerRoute('/protocolos/instancia/:id', ({ id }) => renderProtocolFormView(ap
 
 // Módulo Control (programación, checklist diario, SSMA, actas, KPI).
 registerRoute('/calidad', () => renderQcHomeView(appEl));
+registerRoute('/control/obra/:obraId/calidad', ({ obraId }) => renderQcHomeView(appEl, obraId));
 registerRoute('/calidad/proyecto/:id', ({ id }) => renderQcProjectView(appEl, id));
 registerRoute('/control', () => renderControlHomeView(appEl));
 registerRoute('/control/obra/:obraId', ({ obraId }) => renderControlObraView(appEl, obraId));

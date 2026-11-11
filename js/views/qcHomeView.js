@@ -1,8 +1,9 @@
 import { getSignedInEmail } from '../googleDrive.js';
 import { modulesForEmail, getCachedPermissions } from '../permissions.js';
-import { qcListProjects, qcLoadProject, qcCreateProject } from '../qcStore.js';
+import { qcListProjects, qcLoadProject, qcCreateProject, qcCommit } from '../qcStore.js';
 import { TEMPLATES, catalogOps, templateStageOps } from '../qcTemplates.js';
 import { parseQualityPlanDocx, planToProjectOps } from '../qcPlanParser.js';
+import { getObra } from '../db.js';
 import { navigate } from '../router.js';
 import { promptDialog, toast, escapeHTML } from '../utils.js';
 
@@ -11,10 +12,19 @@ import { promptDialog, toast, escapeHTML } from '../utils.js';
  * proyectos revisados y botón para crear uno nuevo (cargando un plan en Word,
  * desde una plantilla genérica o en blanco).
  */
-export async function renderQcHomeView(container) {
+export async function renderQcHomeView(container, obraId) {
   const email = await getSignedInEmail();
   const allowed = modulesForEmail(email, getCachedPermissions());
-  const backRoute = allowed.includes('control') ? '/control' : '/proyectos';
+  // Con `obraId` es la sección "Control de calidad" de una obra de Control;
+  // sin él es la lista general (para quien solo tiene este módulo).
+  const obra = obraId ? await getObra(obraId) : null;
+  const backRoute = obraId ? `/control/obra/${obraId}` : allowed.includes('control') ? '/control' : '/proyectos';
+  const title = obra ? `Control de calidad · ${obra.name}` : 'Control de calidad de proyectos';
+
+  if (obraId && !obra) {
+    navigate('/control');
+    return;
+  }
 
   if (!allowed.includes('calidad')) {
     container.innerHTML = `
@@ -28,7 +38,10 @@ export async function renderQcHomeView(container) {
     return;
   }
 
-  const projects = await qcListProjects();
+  const projects = await qcListProjects(obraId);
+  // Proyectos creados con la primera versión del módulo, que todavía no
+  // pertenecen a ninguna obra: se ofrece asociarlos a esta.
+  const sinObra = obraId ? (await qcListProjects()).filter((p) => !p.obraId) : [];
   const summaries = await Promise.all(
     projects.map(async (p) => {
       const data = await qcLoadProject(p.id);
@@ -39,9 +52,15 @@ export async function renderQcHomeView(container) {
   container.innerHTML = `
     <header class="app-header">
       <button class="icon-btn" id="btn-back" title="Volver">←</button>
-      <span class="header-title">Control de calidad de proyectos</span>
+      <span class="header-title">${escapeHTML(title)}</span>
     </header>
     <main class="view-content">
+      ${sinObra.length ? `
+        <section class="qc-card">
+          <p class="modal-message">Hay ${sinObra.length} proyecto${sinObra.length === 1 ? '' : 's'} de calidad sin obra: ${escapeHTML(sinObra.map((p) => p.nombre).join(', '))}.</p>
+          <button type="button" class="btn btn-secondary" id="btn-adopt">Asociar a "${escapeHTML(obra.name)}"</button>
+        </section>
+      ` : ''}
       ${summaries.length ? `
         <section class="qc-project-list">
           ${summaries.map(({ project, etapas, actividades }) => `
@@ -68,7 +87,12 @@ export async function renderQcHomeView(container) {
   container.querySelectorAll('.qc-project-card').forEach((card) => {
     card.addEventListener('click', () => navigate(`/calidad/proyecto/${card.dataset.id}`));
   });
-  container.querySelector('#btn-new-project').addEventListener('click', () => startNewProject());
+  container.querySelector('#btn-new-project').addEventListener('click', () => startNewProject(obraId));
+  container.querySelector('#btn-adopt')?.addEventListener('click', async () => {
+    for (const p of sinObra) await qcCommit(p.id, [{ op: 'set', table: 'proyectos', id: p.id, patch: { obraId } }], `Asociado a la obra "${obra.name}"`);
+    toast('Listo.');
+    renderQcHomeView(container, obraId);
+  });
 }
 
 function chooseTemplate() {
@@ -147,7 +171,7 @@ function planSummarySheet(plan) {
   });
 }
 
-async function startNewProject() {
+async function startNewProject(obraId) {
   const templateId = await chooseTemplate();
   if (!templateId) return;
 
@@ -169,7 +193,7 @@ async function startNewProject() {
     }
     if (!(await planSummarySheet(plan))) return;
     const { projectData, ops } = planToProjectOps(plan);
-    const id = await qcCreateProject({ ...projectData, plantilla: 'plan', archivoPlan: file.name }, ops, `Proyecto creado desde el plan "${file.name}"`);
+    const id = await qcCreateProject({ ...projectData, obraId: obraId || null, plantilla: 'plan', archivoPlan: file.name }, ops, `Proyecto creado desde el plan "${file.name}"`);
     toast('Proyecto creado.');
     navigate(`/calidad/proyecto/${id}`);
     return;
@@ -185,7 +209,7 @@ async function startNewProject() {
   });
   if (!result?.nombre) return;
   const id = await qcCreateProject(
-    { nombre: result.nombre, mandante: result.mandante, tipo: 'Revisión de proyecto', plantilla: templateId },
+    { nombre: result.nombre, mandante: result.mandante, tipo: 'Revisión de proyecto', plantilla: templateId, obraId: obraId || null },
     [...catalogOps(), ...templateStageOps(templateId)],
     `Proyecto creado desde la plantilla "${templateId}"`
   );

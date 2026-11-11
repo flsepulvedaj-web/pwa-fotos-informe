@@ -142,12 +142,17 @@ function flatten(record) {
   };
 }
 
-/** Todos los proyectos (sin los anulados). */
-export async function qcListProjects() {
+/**
+ * Proyectos de calidad (sin los anulados). Con `obraId` solo los de esa obra
+ * de Control; sin él, todos (ej. para quien es invitado a un proyecto sin
+ * tener acceso a las obras).
+ */
+export async function qcListProjects(obraId) {
   const records = await qcGetRecordsByTable('proyectos');
   return records
     .filter((r) => !r.anulado)
     .map(flatten)
+    .filter((p) => obraId === undefined || p.obraId === obraId)
     .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { numeric: true }));
 }
 

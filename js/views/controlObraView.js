@@ -63,6 +63,9 @@ export async function renderControlObraView(container, obraId) {
     { id: 'subcontratos', icon: '📇', title: 'Subcontratos', desc: 'Directorio de subcontratos activos', ready: true },
     { id: 'organismos', icon: '🏛️', title: 'Organismos Públicos', desc: 'Estado de trámites (SEC, etc.)', ready: true },
     { id: 'informe-semanal', icon: '📑', title: 'Informe Semanal', desc: 'Acta, participantes, temas y compilado de KPI', ready: true },
+    // Control de calidad de proyectos (revisión de diseños y trabajo de
+    // terceros): permiso propio, como Costos y RDI.
+    ...(allowedModules.includes('calidad') ? [{ id: 'calidad', icon: '📐', title: 'Control de calidad', desc: 'Plan de calidad, entregas y observaciones de proyectos revisados', ready: true }] : []),
   ];
 
   async function loadData() {
@@ -187,6 +190,8 @@ export async function renderControlObraView(container, obraId) {
           navigate(`/organismos/obra/${obraId}`);
         } else if (section === 'informe-semanal') {
           navigate(`/informe-semanal/obra/${obraId}`);
+        } else if (section === 'calidad') {
+          navigate(`/control/obra/${obraId}/calidad`);
         }
         // Las demás secciones todavía no tienen vista — no hacen nada al
         // tocarlas (quedan visibles para mostrar el mapa completo del módulo).

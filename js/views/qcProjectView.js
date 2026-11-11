@@ -210,7 +210,17 @@ export async function renderQcProjectView(container, projectId) {
    * que tiene ese cargo en el proyecto. */
   function personaDe(a) {
     if (a.responsableId) return personas().find((x) => x.id === a.responsableId) || null;
-    return personas().find((x) => x.cargo && x.cargo === a.responsableTexto) || null;
+    // Por cargo, sin importar mayúsculas ni tildes, y aceptando que uno sea
+    // el comienzo del otro ("Asistente Técnico" = "Asistente Técnico de Proyecto").
+    const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    const buscado = norm(a.responsableTexto);
+    if (!buscado) return null;
+    const conCargo = personas().filter((x) => x.cargo);
+    return (
+      conCargo.find((x) => norm(x.cargo) === buscado) ||
+      conCargo.find((x) => norm(x.cargo).startsWith(buscado) || buscado.startsWith(norm(x.cargo))) ||
+      null
+    );
   }
 
   /** Solo la persona responsable (por su correo de Google) o un administrador

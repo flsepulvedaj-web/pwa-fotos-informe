@@ -44,6 +44,14 @@ export function isAdmin(email) {
   return !!email && ADMIN_EMAILS.includes(email);
 }
 
+// Dueño de la cuenta: el único que puede eliminar un proyecto de Control de
+// calidad (los demás administradores no). Es el primero de la lista de admins.
+export const OWNER_EMAIL = ADMIN_EMAILS[0];
+
+export function isOwner(email) {
+  return !!email && email.toLowerCase() === OWNER_EMAIL;
+}
+
 function loadCache() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);

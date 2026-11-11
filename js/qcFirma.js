@@ -80,6 +80,29 @@ export function limpiarFallos(correo) {
   }
 }
 
+// ---- PIN y firma de siempre, guardados en este aparato ----
+// El PIN y la firma se guardan por proyecto. Para no tener que crearlos de nuevo
+// en cada proyecto, este aparato recuerda el último que se usó (ya revuelto) y,
+// en un proyecto nuevo, basta con escribir el PIN de siempre para reutilizarlos.
+const claveCache = (correo) => `qc-pin-cache-${idPin(correo)}`;
+
+export function leerCachePin(correo) {
+  try {
+    const r = JSON.parse(localStorage.getItem(claveCache(correo)) || 'null');
+    return tienePin(r) ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+export function guardarCachePin(correo, registro) {
+  try {
+    if (tienePin(registro)) localStorage.setItem(claveCache(correo), JSON.stringify(registro));
+  } catch {
+    /* sin almacenamiento: se pedirá crear el PIN en cada proyecto */
+  }
+}
+
 /** Firma dibujada (blob del pad) reducida a un JPEG liviano para guardar y mostrar. */
 export async function firmaComoDataURL(blob) {
   return blobToDataURL(await downscaleImageBlob(blob, 480, 0.8));
@@ -103,6 +126,7 @@ export function contenidoFirmado(tipo, registro) {
   if (tipo === 'actividad') return { codigo: registro.codigo, descripcion: registro.descripcion, responsableTexto: registro.responsableTexto, plazoTexto: registro.plazoTexto };
   if (tipo === 'observacion') return { numero: registro.numero, texto: registro.texto, categoria: registro.categoria, entregaId: registro.entregaId, respuesta: registro.respuesta || '', fotos: (registro.adjuntos || []).map((a) => a.id) };
   if (tipo === 'entrega') return { version: registro.version, etapaId: registro.etapaId, fechaRecepcion: registro.fechaRecepcion, completa: registro.completa };
+  if (tipo === 'proyecto') return { nombre: registro.nombre, codigo: registro.codigo, mandante: registro.mandante };
   return {};
 }
 
@@ -110,6 +134,7 @@ export const TIPO_CERT = {
   actividad: 'Actividad',
   observacion: 'Observación',
   entrega: 'Entrega',
+  proyecto: 'Proyecto',
 };
 
 export const ACCION_CERT = {
@@ -117,4 +142,5 @@ export const ACCION_CERT = {
   cerrada: 'cerrada',
   recomendada: 'recomendada para aprobación',
   aprobada: 'aprobada',
+  eliminada: 'eliminado',
 };

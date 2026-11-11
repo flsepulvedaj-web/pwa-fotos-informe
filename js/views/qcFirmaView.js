@@ -10,6 +10,8 @@ import {
   estadoBloqueo,
   registrarFallo,
   limpiarFallos,
+  leerCachePin,
+  guardarCachePin,
   firmaComoDataURL,
   huellaDe,
   contenidoFirmado,
@@ -78,6 +80,7 @@ function modalCrearPin(ctx, { cambiar }) {
       if (v('pin') !== v('pin2')) return error('Los dos PIN no coinciden.');
       if (!imagenSegura(firma)) return error('Dibuja tu firma con el dedo o el mouse.');
       const registro = await crearRegistroPin(ctx.miCorreo, v('pin'), firma);
+      guardarCachePin(ctx.miCorreo, registro);
       ov.remove();
       resolve({ extraOps: [{ op: 'set', table: 'pines', id: idPin(ctx.miCorreo), patch: registro }], firmaDibujada: firma });
     });
@@ -95,6 +98,13 @@ export async function pedirFirma(ctx, { titulo, resumen }) {
   }
   let registro = registroPin(ctx);
   if (!tienePin(registro)) {
+    // ¿Ya tiene PIN y firma de otro proyecto en este aparato? (salvo que un administrador se los haya restablecido)
+    const guardado = registro?.reiniciado ? null : leerCachePin(ctx.miCorreo);
+    if (guardado) {
+      const reuso = await modalReutilizarPin(ctx, guardado, { titulo, resumen });
+      if (reuso === null) return null;
+      if (reuso !== 'nuevo') return reuso;
+    }
     const nuevo = await modalCrearPin(ctx, { cambiar: false });
     if (!nuevo) return null;
     // Acaba de crear su PIN y su firma: se firma en el mismo paso.
@@ -137,9 +147,48 @@ export async function pedirFirma(ctx, { titulo, resumen }) {
         return error(resto.bloqueado ? 'PIN incorrecto. Quedaste bloqueado por 5 minutos.' : `PIN incorrecto. Te quedan ${resto.restantes} intento(s).`);
       }
       limpiarFallos(ctx.miCorreo);
+      guardarCachePin(ctx.miCorreo, registro);
       const comentario = ov.querySelector('[name="comentario"]').value.trim();
       ov.remove();
       resolve({ comentario, firmaDibujada: registro.firmaDibujada, extraOps: [] });
+    });
+  });
+}
+
+/** Reutiliza el PIN y la firma de otro proyecto: basta con escribir el PIN de siempre. Devuelve el resultado de la firma, 'nuevo' o null. */
+function modalReutilizarPin(ctx, guardado, { titulo, resumen }) {
+  return new Promise((resolve) => {
+    const ov = abrirModal(`
+      <h2>✍️ ${escapeHTML(titulo)}</h2>
+      <p class="modal-message">${escapeHTML(resumen || '')}</p>
+      <p class="modal-message">Ya tienes un PIN y una firma de otro proyecto. Escribe tu PIN de siempre para usarlos aquí.</p>
+      <div class="qc-firma-box"><img src="${imagenSegura(guardado.firmaDibujada)}" alt="Tu firma" /></div>
+      <label>Comentario (opcional) <textarea name="comentario" rows="2" maxlength="500"></textarea></label>
+      <label>Tu PIN <input type="password" name="pin" inputmode="numeric" maxlength="6" autocomplete="off" /></label>
+      <p class="qc-hint" id="firma-error" hidden></p>
+      <div class="modal-actions qc-obs-actions">
+        <button type="button" class="btn btn-secondary" data-act="nuevo">Crear otro PIN</button>
+        <button type="button" class="btn btn-secondary" data-act="cancel">Cancelar</button>
+        <button type="button" class="btn btn-primary" data-act="ok">Firmar</button>
+      </div>`);
+    const error = (t) => { const p = ov.querySelector('#firma-error'); p.textContent = t; p.hidden = !t; };
+    ov.querySelector('[name="pin"]').focus();
+    ov.addEventListener('click', async (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (!act) return;
+      if (act === 'cancel') { ov.remove(); resolve(null); return; }
+      if (act === 'nuevo') { ov.remove(); resolve('nuevo'); return; }
+      const bloqueo = estadoBloqueo(ctx.miCorreo);
+      if (bloqueo.bloqueado) return error('Demasiados intentos fallidos. Espera unos minutos.');
+      if (!(await verificarPin(guardado, ov.querySelector('[name="pin"]').value.trim()))) {
+        registrarFallo(ctx.miCorreo);
+        const resto = estadoBloqueo(ctx.miCorreo);
+        return error(resto.bloqueado ? 'PIN incorrecto. Quedaste bloqueado por 5 minutos.' : `PIN incorrecto. Te quedan ${resto.restantes} intento(s).`);
+      }
+      limpiarFallos(ctx.miCorreo);
+      const comentario = ov.querySelector('[name="comentario"]').value.trim();
+      ov.remove();
+      resolve({ comentario, firmaDibujada: guardado.firmaDibujada, extraOps: [{ op: 'set', table: 'pines', id: idPin(ctx.miCorreo), patch: { ...guardado, reiniciado: false } }] });
     });
   });
 }

@@ -1,11 +1,11 @@
 import { getSignedInEmail } from '../googleDrive.js';
-import { modulesForEmail, getCachedPermissions, isAdmin } from '../permissions.js';
+import { modulesForEmail, getCachedPermissions, isAdmin, isOwner } from '../permissions.js';
 import { qcLoadProject, qcCommit, qcHistory, qcVerifyChain, qcNewId } from '../qcStore.js';
 import { QC_ROLES, roleLabel } from '../qcTemplates.js';
 import { ventanaActividad, formatFecha, parsePlazo, addCalendarDays, businessDaysBetween } from '../qcDates.js';
 import { createObservacionesTab } from './qcObservacionesView.js';
 import { certificar, createCertificacionesTab, reiniciarPin } from './qcFirmaView.js';
-import { tienePin, idPin } from '../qcFirma.js';
+import { tienePin, idPin, guardarCachePin } from '../qcFirma.js';
 import { qcSyncProject, onQcChange } from '../qcSync.js';
 import { ESTADO_ENTREGA, hoyISO, ordenarEntregas, venceEntrega, entregaVencida, etapaEfectiva, observacionesBloqueantes } from '../qcEntregas.js';
 import { navigate } from '../router.js';
@@ -149,7 +149,10 @@ export async function renderQcProjectView(container, projectId) {
       <section class="qc-card">
         <div class="qc-card-header">
           <h3>Proyecto</h3>
-          <button type="button" class="btn btn-secondary" id="qc-edit-project">✏️ Editar</button>
+          <div class="qc-card-actions">
+            ${isOwner(email) ? '<button type="button" class="btn btn-secondary" id="qc-delete-project" title="Eliminar este proyecto (solo el dueño de la cuenta)">🗑️ Eliminar</button>' : ''}
+            <button type="button" class="btn btn-secondary" id="qc-edit-project">✏️ Editar</button>
+          </div>
         </div>
         <dl class="qc-meta">${meta.map(([k, v]) => `<dt>${k}</dt><dd>${escapeHTML(v)}</dd>`).join('')}</dl>
         <label class="qc-inline-field">Inicio del servicio
@@ -204,6 +207,10 @@ export async function renderQcProjectView(container, projectId) {
 
   /** La persona del proyecto que corresponde a la cuenta de Google con la que se entró. */
   const yoSoy = () => (miCorreo ? personas().find((x) => (x.correo || '').toLowerCase() === miCorreo) : null);
+
+  // Si esta persona ya tiene PIN y firma en este proyecto, este aparato los recuerda
+  // para reutilizarlos en otros proyectos sin crearlos de nuevo.
+  guardarCachePin(miCorreo, data.pines.find((p) => p.id === idPin(miCorreo) && !p.anulado));
 
   // Lo que necesitan las pantallas de observaciones y de firma.
   const firmaCtx = {
@@ -330,6 +337,44 @@ export async function renderQcProjectView(container, projectId) {
   }
 
   function bindPlan() {
+    // Eliminar el proyecto entero (solo administrador). No se borra nada de verdad: queda
+    // anulado con su motivo, desaparece de las listas en todos los aparatos y el historial se conserva.
+    container.querySelector('#qc-delete-project')?.addEventListener('click', async () => {
+      if (!isOwner(email)) {
+        toast('Solo el dueño de la cuenta puede eliminar un proyecto.');
+        return;
+      }
+      const resumen = `${data.etapas.filter((e) => !e.anulado).length} etapas, ${data.actividades.filter((a) => !a.anulado).length} actividades, ${data.observaciones.filter((o) => !o.anulado).length} observaciones y ${data.certificaciones.filter((c) => !c.anulado).length} certificaciones`;
+      const r = await promptDialog({
+        title: 'Eliminar proyecto',
+        fields: [
+          { name: 'motivo', label: `Vas a eliminar "${data.proyecto.nombre}" (${resumen}). Desaparece de la lista en todos los aparatos. Motivo:`, placeholder: 'Ej: proyecto de prueba', maxlength: 200 },
+          { name: 'confirmacion', label: 'Para confirmar, escribe ELIMINAR', maxlength: 20 },
+        ],
+        confirmLabel: 'Eliminar',
+      });
+      if (!r) return;
+      if ((r.confirmacion || '').trim().toUpperCase() !== 'ELIMINAR') {
+        toast('No se eliminó: faltó escribir ELIMINAR.');
+        return;
+      }
+      // Eliminar es certificar: pide el PIN y deja la firma en el mismo evento que la anulación.
+      const obraId = data.proyecto.obraId;
+      const firmada = await certificar(firmaCtx, {
+        tipo: 'proyecto',
+        registro: data.proyecto,
+        refTabla: 'proyectos',
+        refCodigo: String(data.proyecto.nombre || '').slice(0, 50),
+        accion: 'eliminada',
+        nota: 'Proyecto eliminado y certificado',
+        resumen: `Eliminar el proyecto "${data.proyecto.nombre}" (${resumen}).`,
+        cambios: [{ op: 'void', table: 'proyectos', id: projectId, reason: (r.motivo || '').trim() || 'Eliminado por un administrador' }],
+      });
+      if (!firmada) return;
+      toast('Proyecto eliminado.');
+      navigate(obraId ? `/control/obra/${obraId}/calidad` : '/calidad');
+    });
+
     container.querySelector('#qc-edit-project').addEventListener('click', async () => {
       const p = data.proyecto;
       const r = await promptDialog({

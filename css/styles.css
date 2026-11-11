@@ -3482,3 +3482,40 @@ button {
 .qc-whoami.ok { background: #dcfce7; color: #166534; }
 .qc-whoami.warn { background: #fef3c7; color: #92400e; }
 .qc-whoami span { opacity: 0.8; }
+
+/* ---- Observaciones (control de calidad) ---- */
+.qc-warn { color: #b45309; font-weight: 600; }
+.qc-obs-tools { display: flex; gap: 8px; margin: 8px 0; }
+.qc-seg { display: inline-flex; border: 1px solid #d1d5db; border-radius: 10px; overflow: hidden; }
+.qc-seg-btn { padding: 6px 14px; background: #fff; border: 0; font-size: 14px; cursor: pointer; }
+.qc-seg-btn.active { background: #1e2a5a; color: #fff; }
+.qc-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.qc-filters select, .qc-filters input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #fff; }
+.qc-obs-list { display: flex; flex-direction: column; gap: 8px; }
+.qc-obs { display: flex; flex-direction: column; gap: 4px; text-align: left; width: 100%; padding: 10px 12px; background: #f4f5f7; border: 1px solid #e5e7eb; border-radius: 12px; cursor: pointer; font: inherit; color: inherit; }
+.qc-obs-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.qc-obs-num { font-weight: 700; }
+.qc-obs-text { font-size: 14px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.qc-obs-meta { font-size: 12px; color: #6b7280; }
+.qc-obs-fotos { font-size: 12px; color: #6b7280; }
+.qc-cat { display: inline-block; min-width: 22px; text-align: center; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #e5e7eb; color: #374151; }
+.qc-cat-a { background: #fee2e2; color: #991b1b; }
+.qc-cat-b { background: #fef3c7; color: #92400e; }
+.qc-cat-c { background: #e0e7ff; color: #3730a3; }
+.qc-obs-estado-1 { background: #dbeafe; color: #1e40af; }
+.qc-obs-estado-2 { background: #ede9fe; color: #5b21b6; }
+.qc-obs-estado-3 { background: #dcfce7; color: #166534; }
+.qc-kanban { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 8px; }
+.qc-kanban-col { display: flex; flex-direction: column; gap: 8px; background: #fff; border-radius: 14px; padding: 10px; }
+.qc-kanban-col h4 { margin: 0; font-size: 14px; display: flex; justify-content: space-between; }
+.qc-obs-modal { max-height: 92vh; overflow-y: auto; }
+.qc-obs-modal label { display: block; margin-top: 10px; font-size: 13px; color: #6b7280; }
+.qc-obs-modal select, .qc-obs-modal input[type="text"], .qc-obs-modal textarea { display: block; width: 100%; margin-top: 4px; padding: 9px 10px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; font-size: 15px; color: #111827; background: #f4f5f7; box-sizing: border-box; }
+.qc-obs-full { white-space: pre-wrap; margin: 8px 0; }
+.qc-obs-actions { flex-wrap: wrap; }
+.qc-fotos { margin-top: 10px; }
+.qc-fotos-lista { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.qc-foto { position: relative; }
+.qc-foto img, .qc-thumb { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; cursor: pointer; }
+.qc-foto button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: #991b1b; color: #fff; font-size: 12px; cursor: pointer; }
+.qc-lightbox { max-width: 96vw; max-height: 92vh; border-radius: 8px; }

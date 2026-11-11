@@ -2,7 +2,8 @@ import { getSignedInEmail } from '../googleDrive.js';
 import { modulesForEmail, getCachedPermissions, isAdmin } from '../permissions.js';
 import { qcLoadProject, qcCommit, qcHistory, qcVerifyChain, qcNewId } from '../qcStore.js';
 import { QC_ROLES, roleLabel } from '../qcTemplates.js';
-import { ventanaActividad, formatFecha, parsePlazo, addCalendarDays } from '../qcDates.js';
+import { ventanaActividad, formatFecha, parsePlazo, addCalendarDays, businessDaysBetween } from '../qcDates.js';
+import { createObservacionesTab } from './qcObservacionesView.js';
 import { qcSyncProject, onQcChange } from '../qcSync.js';
 import { ESTADO_ENTREGA, hoyISO, ordenarEntregas, venceEntrega, entregaVencida, etapaEfectiva, observacionesBloqueantes } from '../qcEntregas.js';
 import { navigate } from '../router.js';
@@ -12,6 +13,7 @@ const TABS = [
   { id: 'tablero', label: 'Tablero' },
   { id: 'plan', label: 'Plan de calidad' },
   { id: 'entregas', label: 'Entregas' },
+  { id: 'observaciones', label: 'Observaciones' },
   { id: 'participantes', label: 'Participantes' },
   { id: 'catalogos', label: 'Catálogos' },
   { id: 'historial', label: 'Historial' },
@@ -95,6 +97,7 @@ export async function renderQcProjectView(container, projectId) {
       })
     );
     bindTab();
+    if (tab === 'observaciones') obsTab.reconciliar();
     if (!firstPaint) window.scrollTo(0, scrollY);
     firstPaint = false;
   }
@@ -106,6 +109,7 @@ export async function renderQcProjectView(container, projectId) {
     if (tab === 'tablero') return renderTablero();
     if (tab === 'plan') return renderPlan();
     if (tab === 'entregas') return renderEntregas();
+    if (tab === 'observaciones') return obsTab.render();
     if (tab === 'participantes') return renderParticipantes();
     if (tab === 'catalogos') return renderCatalogos();
     return renderHistorial();
@@ -114,6 +118,7 @@ export async function renderQcProjectView(container, projectId) {
   function bindTab() {
     if (tab === 'tablero') bindTablero();
     else if (tab === 'entregas') bindEntregas();
+    else if (tab === 'observaciones') obsTab.bind(container);
     else if (tab === 'plan') bindPlan();
     else if (tab === 'participantes') bindParticipantes();
     else if (tab === 'catalogos') bindCatalogos();
@@ -195,6 +200,19 @@ export async function renderQcProjectView(container, projectId) {
   /** La persona del proyecto que corresponde a la cuenta de Google con la que se entró. */
   const yoSoy = () => (miCorreo ? personas().find((x) => (x.correo || '').toLowerCase() === miCorreo) : null);
 
+  const obsTab = createObservacionesTab({
+    getData: () => data,
+    save,
+    commit: (ops, note) => qcCommit(projectId, ops, note),
+    reload,
+    paint: () => paint(),
+    email,
+    miCorreo,
+    isAdmin: isAdmin(email),
+    yoSoy,
+    nombreDe,
+  });
+
   function renderQuienSoy() {
     const yo = yoSoy();
     if (yo) {
@@ -251,8 +269,12 @@ export async function renderQcProjectView(container, projectId) {
       vence = `<span class="qc-due ${v.origen}">${v.origen === 'manual' ? '📌' : '📅'} ${escapeHTML(rango)}</span>`;
     } else if (plazo.tipo === 'evento' || plazo.tipo === 'tabla41') {
       vence = '<span class="qc-due pendiente">Se calcula al registrar la entrega</span>';
+    } else if (plazo.tipo === 'inicio') {
+      vence = '<span class="qc-due pendiente">Sin fecha: falta el inicio del servicio (arriba, en Plan de calidad)</span>';
+    } else if (plazo.tipo === 'recepcion' || plazo.tipo === 'paralelo') {
+      vence = '<span class="qc-due pendiente">Sin fecha: falta registrar la entrega de esta etapa</span>';
     } else {
-      vence = '<span class="qc-due pendiente">Sin fecha</span>';
+      vence = '<span class="qc-due pendiente">Sin fecha: se pone a mano (✏️)</span>';
     }
     return `
       <li class="qc-activity" data-activity="${a.id}">
@@ -391,8 +413,19 @@ export async function renderQcProjectView(container, projectId) {
       .filter((r) => r.hasta && r.hasta <= limite)
       .sort((a, b) => a.hasta.localeCompare(b.hasta));
 
+    // Etapas cuya entrega estaba prevista y todavía no llega completa.
+    const sinEntrega = etapas
+      .filter((e) => e.plazoRevisionDias != null && e.fechaRecepcion && e.fechaRecepcion < hoy)
+      .filter((e) => !entregas.some((x) => x.etapaId === e.id && x.completa !== false && x.estado !== ESTADO_ENTREGA.devuelta))
+      .map((e) => ({ e, dias: businessDaysBetween(e.fechaRecepcion, hoy, holidays()), devuelta: entregas.some((x) => x.etapaId === e.id) }));
+    const alertasEntrega = sinEntrega.length
+      ? `<section class="qc-card"><h3>⚠️ Entregas atrasadas</h3><ul class="qc-people">${sinEntrega.map(({ e, dias, devuelta }) => `<li class="qc-person overdue"><div><strong>${escapeHTML(e.codigo)} · ${escapeHTML(e.nombre)}</strong><p class="qc-person-meta">Estaba prevista para el ${escapeHTML(formatFecha(e.fechaRecepcion))} y ${devuelta ? 'solo llegó una entrega incompleta' : 'todavía no llega'}: ${dias} día(s) hábil(es) de atraso.</p></div></li>`).join('')}</ul></section>`
+      : '';
+
     const yo = yoSoy();
-    const mias = yo ? actividades.filter((a) => personaDe(a)?.id === yo.id) : [];
+    const mias = yo
+      ? actividades.filter((a) => personaDe(a)?.id === yo.id).sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'es', { numeric: true }))
+      : [];
     const misActividades = yo
       ? `<section class="qc-card"><h3>Mis actividades pendientes (${mias.length})</h3><ul class="qc-people">${
           mias.slice(0, 8).map((a) => `<li class="qc-person"><div><strong>${escapeHTML(a.codigo)}</strong> ${escapeHTML(a.descripcion.slice(0, 90))}${a.descripcion.length > 90 ? '…' : ''}</div></li>`).join('') ||
@@ -411,11 +444,12 @@ export async function renderQcProjectView(container, projectId) {
         ${tile(vencidas.length, 'Vencidas', vencidas.length ? 'bad' : '')}
         ${tile(actividades.length, 'Actividades pendientes')}
       </section>
+      ${alertasEntrega}
       ${misActividades}
       <section class="qc-card">
         <h3>Observaciones abiertas</h3>
         <p class="qc-chips">${porCategoria.map(({ c, n }) => `<span class="qc-chip">${escapeHTML(c.codigo)} · ${escapeHTML(c.nombre)}: <strong>${n}</strong></span>`).join('') || '<span class="qc-hint">Sin categorías.</span>'}</p>
-        ${data.observaciones.length ? '' : '<p class="qc-hint">Todavía no hay observaciones (se registran en el paso siguiente del módulo).</p>'}
+        ${data.observaciones.length ? '' : '<p class="qc-hint">Todavía no hay observaciones. Se registran en la pestaña Observaciones.</p>'}
       </section>
       <section class="qc-card">
         <h3>Plazos de revisión que corren</h3>
@@ -458,6 +492,14 @@ export async function renderQcProjectView(container, projectId) {
               const vence = venceEntrega(x, e, holidays());
               const vencida = entregaVencida(x, e, holidays(), hoy);
               const bloq = observacionesBloqueantes(data, x.id).length;
+              const completa = x.completa !== false && x.estado !== ESTADO_ENTREGA.devuelta;
+              const idx = entregas.indexOf(x);
+              // Reingreso tras una devolución por incompleta: cuántos días hábiles tardó.
+              const devueltaPrevia = completa ? [...entregas.slice(0, idx)].reverse().find((y) => y.estado === ESTADO_ENTREGA.devuelta || y.completa === false) : null;
+              const desfaseReingreso = devueltaPrevia && x.fechaRecepcion ? businessDaysBetween(devueltaPrevia.fechaDevolucion || devueltaPrevia.fechaRecepcion, x.fechaRecepcion, holidays()) : null;
+              // Atraso de la primera entrega completa frente a la fecha prevista de la etapa.
+              const primeraCompleta = entregas.find((y) => y.completa !== false && y.estado !== ESTADO_ENTREGA.devuelta);
+              const atraso = completa && x === primeraCompleta && e.fechaRecepcion && x.fechaRecepcion && x.fechaRecepcion > e.fechaRecepcion ? businessDaysBetween(e.fechaRecepcion, x.fechaRecepcion, holidays()) : 0;
               return `
                 <li class="qc-person${vencida ? ' overdue' : ''}${x.estado === ESTADO_ENTREGA.devuelta ? ' inactive' : ''}">
                   <div>
@@ -467,6 +509,8 @@ export async function renderQcProjectView(container, projectId) {
                     ${vence ? `<p class="qc-person-meta">${vencida ? '⚠️ Revisión vencida el' : 'Revisión vence el'} ${escapeHTML(formatFecha(vence))}</p>` : ''}
                     ${x.fechaInforme ? `<p class="qc-person-meta">Informe de revisión: ${escapeHTML(formatFecha(x.fechaInforme))}</p>` : ''}
                     ${x.fechaDevolucion ? `<p class="qc-person-meta">Devuelta el ${escapeHTML(formatFecha(x.fechaDevolucion))}</p>` : ''}
+                    ${desfaseReingreso != null ? `<p class="qc-person-meta qc-warn">↪️ Reingreso completo ${desfaseReingreso} día(s) hábil(es) después de la devolución de ${escapeHTML(devueltaPrevia.version || 'la entrega anterior')}</p>` : ''}
+                    ${atraso > 0 ? `<p class="qc-person-meta qc-warn">⏰ Atraso de ${atraso} día(s) hábil(es) respecto de la fecha prevista (${escapeHTML(formatFecha(e.fechaRecepcion))})</p>` : ''}
                     ${bloq ? `<p class="qc-person-meta">🔒 ${bloq} observación(es) impiden aprobarla</p>` : ''}
                   </div>
                   <button type="button" class="icon-btn" data-edit-entrega="${x.id}" title="Editar">✏️</button>

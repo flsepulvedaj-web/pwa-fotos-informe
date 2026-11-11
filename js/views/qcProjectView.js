@@ -1,5 +1,5 @@
 import { getSignedInEmail } from '../googleDrive.js';
-import { modulesForEmail, getCachedPermissions } from '../permissions.js';
+import { modulesForEmail, getCachedPermissions, isAdmin } from '../permissions.js';
 import { qcLoadProject, qcCommit, qcHistory, qcVerifyChain, qcNewId } from '../qcStore.js';
 import { QC_ROLES, roleLabel } from '../qcTemplates.js';
 import { ventanaActividad, formatFecha, parsePlazo, addCalendarDays } from '../qcDates.js';
@@ -188,14 +188,34 @@ export async function renderQcProjectView(container, projectId) {
     `;
   }
 
+  const miCorreo = (email || '').toLowerCase();
+  const personas = () => data.participantes.filter((x) => !x.anulado && x.activo !== false);
+  const nombreDe = (correo) => personas().find((x) => (x.correo || '').toLowerCase() === (correo || '').toLowerCase())?.nombre || correo || '';
+
+  /** Persona responsable de una actividad: la elegida a mano o, si no hay, la
+   * que tiene ese cargo en el proyecto. */
+  function personaDe(a) {
+    if (a.responsableId) return personas().find((x) => x.id === a.responsableId) || null;
+    return personas().find((x) => x.cargo && x.cargo === a.responsableTexto) || null;
+  }
+
+  /** Solo la persona responsable (por su correo de Google) o un administrador
+   * puede cambiar el estado de una actividad. */
+  function puedeActuar(a) {
+    if (isAdmin(email)) return { ok: true };
+    const p = personaDe(a);
+    if (!p) return { ok: false, msg: 'Esta actividad no tiene una persona responsable asignada. Pídele a un administrador que la asigne.' };
+    if (!p.correo) return { ok: false, msg: `Falta el correo de ${p.nombre || p.cargo} en Participantes: sin eso no se sabe quién es.` };
+    if (p.correo.toLowerCase() !== miCorreo) return { ok: false, msg: `Solo ${p.nombre || p.cargo} (responsable) puede cambiar esta actividad.` };
+    return { ok: true };
+  }
+
   /** Lista para el desplegable "Responsable": los cargos de los participantes
    * del proyecto y los que ya aparecen en las actividades del plan. */
-  function opcionesResponsable(actual) {
-    const nombres = new Set();
-    data.participantes.filter((x) => !x.anulado).forEach((x) => x.cargo && nombres.add(x.cargo));
-    data.actividades.filter((x) => !x.anulado).forEach((x) => x.responsableTexto && nombres.add(x.responsableTexto));
-    if (actual) nombres.add(actual);
-    return [{ value: '', label: 'Sin responsable' }, ...[...nombres].sort((a, b) => a.localeCompare(b, 'es')).map((n) => ({ value: n, label: n }))];
+  function opcionesResponsable(a) {
+    const actual = personaDe(a);
+    const opts = personas().map((x) => ({ value: x.id, label: [x.nombre || '(sin nombre)', x.cargo].filter(Boolean).join(' — ') + (x.correo ? '' : ' · falta correo') }));
+    return [{ value: '', label: 'Sin responsable' }, ...opts, ...(a.responsableTexto && !actual ? [{ value: '__texto', label: `${a.responsableTexto} (sin persona asignada)` }] : [])];
   }
 
   function renderActivity(a, etapa) {
@@ -219,9 +239,9 @@ export async function renderQcProjectView(container, projectId) {
         </div>
         <p class="qc-activity-desc">${escapeHTML(a.descripcion)}</p>
         <p class="qc-activity-meta">
-          <span>👤 ${escapeHTML(a.responsableTexto || 'Sin responsable')}</span>
+          <span>👤 ${escapeHTML(personaDe(a) ? [personaDe(a).nombre, personaDe(a).cargo].filter(Boolean).join(' · ') : (a.responsableTexto ? a.responsableTexto + ' (sin persona asignada)' : 'Sin responsable'))}</span>
           <span>⏱ ${escapeHTML(a.plazoTexto || '—')}</span>
-          ${a.estado === 'terminada' ? `<span class="qc-due calculada">✅ Cumplida el ${escapeHTML(formatFecha(a.fechaCumplida || ''))}${v?.hasta && a.fechaCumplida && a.fechaCumplida > v.hasta ? ' · ⚠️ fuera de plazo' : ''}</span>` : a.estado === 'no_aplica' ? '' : (v?.hasta && v.hasta < hoyISO() ? `<span class="qc-due">⚠️ Atrasada · venció ${escapeHTML(formatFecha(v.hasta))}</span>` : vence)}
+          ${a.estado === 'terminada' ? `<span class="qc-due calculada">✅ Cumplida el ${escapeHTML(formatFecha(a.fechaCumplida || ''))}${a.cumplidaPor ? ' por ' + escapeHTML(nombreDe(a.cumplidaPor)) : ''}${v?.hasta && a.fechaCumplida && a.fechaCumplida > v.hasta ? ' · ⚠️ fuera de plazo' : ''}</span>` : a.estado === 'no_aplica' ? '' : (v?.hasta && v.hasta < hoyISO() ? `<span class="qc-due">⚠️ Atrasada · venció ${escapeHTML(formatFecha(v.hasta))}</span>` : vence)}
         </p>
         ${a.nota ? `<p class="qc-hint">📝 ${escapeHTML(a.nota)}</p>` : ''}
       </li>
@@ -279,28 +299,43 @@ export async function renderQcProjectView(container, projectId) {
     container.querySelectorAll('[data-edit-activity]').forEach((b) =>
       b.addEventListener('click', async () => {
         const a = data.actividades.find((x) => x.id === b.dataset.editActivity);
-        const r = await promptDialog({
-          title: `Actividad ${a.codigo}`,
-          fields: [
-            { name: 'estado', label: 'Estado', type: 'select', value: a.estado, options: ESTADOS_ACTIVIDAD },
+        const permiso = puedeActuar(a);
+        if (!permiso.ok) {
+          toast(permiso.msg);
+          return;
+        }
+        const admin = isAdmin(email);
+        const actual = personaDe(a);
+        const fields = [
+          { name: 'estado', label: 'Estado', type: 'select', value: a.estado, options: ESTADOS_ACTIVIDAD },
+          { name: 'nota', label: 'Nota del control (qué se revisó, resultado)', value: a.nota || '' },
+        ];
+        if (admin) {
+          fields.push(
+            { name: 'responsableId', label: 'Responsable (persona)', type: 'select', value: actual?.id || (a.responsableTexto ? '__texto' : ''), options: opcionesResponsable(a) },
             { name: 'fechaManual', label: 'Fecha límite puesta a mano (déjala vacía para usar el cálculo)', type: 'date', value: a.fechaManual || '' },
-            { name: 'nota', label: 'Nota del control (qué se revisó, resultado)', value: a.nota || '' },
-            { name: 'responsableTexto', label: 'Responsable', type: 'select', value: a.responsableTexto || '', options: opcionesResponsable(a.responsableTexto) },
-            { name: 'plazoTexto', label: 'Plazo (texto)', value: a.plazoTexto || '' },
-          ],
-        });
+            { name: 'plazoTexto', label: 'Plazo (texto)', value: a.plazoTexto || '' }
+          );
+        }
+        const r = await promptDialog({ title: `Actividad ${a.codigo}`, fields });
         if (!r) return;
         const patch = {
           estado: r.estado,
           nota: r.nota || '',
-          // Al marcarla completada queda la fecha en que se cumplió; si se
-          // devuelve a otro estado, se limpia.
+          // Quien la marca completada queda registrado con su correo de Google.
+          cumplidaPor: r.estado === 'terminada' ? (a.cumplidaPor || miCorreo || null) : null,
           fechaCumplida: r.estado === 'terminada' ? (a.fechaCumplida || hoyISO()) : null,
-          fechaManual: r.fechaManual || null,
-          responsableTexto: r.responsableTexto,
-          plazoTexto: r.plazoTexto,
-          plazoParseado: parsePlazo(r.plazoTexto),
         };
+        if (admin) {
+          const persona = r.responsableId && r.responsableId !== '__texto' ? personas().find((x) => x.id === r.responsableId) : null;
+          if (r.responsableId !== '__texto') {
+            patch.responsableId = persona?.id || null;
+            patch.responsableTexto = persona ? (persona.cargo || persona.nombre || '') : '';
+          }
+          patch.fechaManual = r.fechaManual || null;
+          patch.plazoTexto = r.plazoTexto;
+          patch.plazoParseado = parsePlazo(r.plazoTexto);
+        }
         await save('actividades', a.id, patch, `Actividad ${a.codigo} editada`);
         paint();
       })

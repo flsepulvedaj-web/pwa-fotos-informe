@@ -90,7 +90,10 @@ export function createObservacionesTab(ctx) {
       <section class="qc-card">
         <div class="qc-card-header">
           <h3>Observaciones (${todas.length})</h3>
-          ${p.crear ? '<button type="button" class="btn btn-primary" id="qc-new-obs">➕ Nueva</button>' : ''}
+          <div class="qc-card-actions">
+            <button type="button" class="btn btn-secondary" id="qc-export-xlsx" title="Descargar la matriz en Excel">📊 Excel</button>
+            ${p.crear ? '<button type="button" class="btn btn-primary" id="qc-new-obs">➕ Nueva</button>' : ''}
+          </div>
         </div>
         ${p.soloLectura ? '<p class="qc-hint">Solo puedes mirar: tu cuenta no tiene un rol que pueda crear o responder observaciones en este proyecto.</p>' : ''}
         <div class="qc-obs-tools">
@@ -113,6 +116,7 @@ export function createObservacionesTab(ctx) {
 
   function bind(container) {
     container.querySelector('#qc-new-obs')?.addEventListener('click', () => formularioObservacion(null));
+    container.querySelector('#qc-export-xlsx')?.addEventListener('click', () => ctx.exportarExcel());
     container.querySelectorAll('[data-vista]').forEach((b) => b.addEventListener('click', () => { vista = b.dataset.vista; ctx.paint(); }));
     container.querySelectorAll('[data-filtro]').forEach((el) => {
       const evento = el.tagName === 'INPUT' ? 'change' : 'change';

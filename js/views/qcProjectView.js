@@ -218,7 +218,34 @@ export async function renderQcProjectView(container, projectId) {
     yoSoy,
     nombreDe,
   };
-  const obsTab = createObservacionesTab({ ...firmaCtx, certificar: (args) => certificar(firmaCtx, args) });
+  const obsTab = createObservacionesTab({
+    ...firmaCtx,
+    certificar: (args) => certificar(firmaCtx, args),
+    exportarExcel: async () => {
+      try {
+        const { exportarExcel } = await import('../qcExport.js');
+        toast(`📊 Excel listo: ${exportarExcel(data, nombreDe)}`);
+      } catch (err) {
+        console.error(err);
+        toast(err.message || 'No se pudo generar el Excel.');
+      }
+    },
+  });
+
+  async function generarInforme(entregaId) {
+    try {
+      toast('Armando el informe…');
+      const { construirInformePDF } = await import('../qcInformePdf.js');
+      const { downloadBlob, sanitizeFilename } = await import('../pdfExport.js');
+      const x = data.entregas.find((e) => e.id === entregaId);
+      const etapa = data.etapas.find((e) => e.id === x.etapaId);
+      const blob = construirInformePDF(data, entregaId, nombreDe, holidays());
+      downloadBlob(blob, `Informe de revision - ${sanitizeFilename(data.proyecto.nombre).slice(0, 50)} - Etapa ${etapa?.codigo || ''} ${x.version || ''}.pdf`);
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo armar el informe.');
+    }
+  }
   const certTab = createCertificacionesTab(firmaCtx);
 
   function renderQuienSoy() {
@@ -543,6 +570,7 @@ export async function renderQcProjectView(container, projectId) {
                     ${puedeSegundaFirma(x) ? '<p class="qc-person-meta qc-warn">⏳ Falta la segunda firma de Gobernanza</p>' : ''}
                   </div>
                   ${puedeSegundaFirma(x) && (isAdmin(email) || yoSoy()?.rol === 'gobernanza') && x.aprobacion1Por !== miCorreo ? `<button type="button" class="btn btn-primary" data-firma2="${x.id}">✍️ Firmar</button>` : ''}
+                  ${completa ? `<button type="button" class="btn btn-secondary" data-informe="${x.id}" title="Informe de revisión en PDF">📄 Informe</button>` : ''}
                   <button type="button" class="icon-btn" data-edit-entrega="${x.id}" title="Editar">✏️</button>
                 </li>`;
             }).join('') || '<li class="qc-hint">Todavía no llega ninguna entrega de esta etapa.</li>'}
@@ -675,6 +703,7 @@ export async function renderQcProjectView(container, projectId) {
     container.querySelectorAll('[data-new-entrega]').forEach((b) => b.addEventListener('click', () => registrarEntrega(b.dataset.newEntrega)));
     container.querySelectorAll('[data-edit-entrega]').forEach((b) => b.addEventListener('click', () => editarEntrega(b.dataset.editEntrega)));
     container.querySelectorAll('[data-firma2]').forEach((b) => b.addEventListener('click', () => segundaFirma(b.dataset.firma2)));
+    container.querySelectorAll('[data-informe]').forEach((b) => b.addEventListener('click', () => generarInforme(b.dataset.informe)));
   }
 
   // ---------- Participantes ----------

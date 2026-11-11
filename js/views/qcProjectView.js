@@ -4,16 +4,19 @@ import { qcLoadProject, qcCommit, qcHistory, qcVerifyChain, qcNewId } from '../q
 import { QC_ROLES, roleLabel } from '../qcTemplates.js';
 import { ventanaActividad, formatFecha, parsePlazo, addCalendarDays, businessDaysBetween } from '../qcDates.js';
 import { createObservacionesTab } from './qcObservacionesView.js';
+import { certificar, createCertificacionesTab, reiniciarPin } from './qcFirmaView.js';
+import { tienePin, idPin } from '../qcFirma.js';
 import { qcSyncProject, onQcChange } from '../qcSync.js';
 import { ESTADO_ENTREGA, hoyISO, ordenarEntregas, venceEntrega, entregaVencida, etapaEfectiva, observacionesBloqueantes } from '../qcEntregas.js';
 import { navigate } from '../router.js';
-import { promptDialog, toast, escapeHTML } from '../utils.js';
+import { promptDialog, toast, escapeHTML, confirmDialog } from '../utils.js';
 
 const TABS = [
   { id: 'tablero', label: 'Tablero' },
   { id: 'plan', label: 'Plan de calidad' },
   { id: 'entregas', label: 'Entregas' },
   { id: 'observaciones', label: 'Observaciones' },
+  { id: 'certificaciones', label: 'Certificaciones' },
   { id: 'participantes', label: 'Participantes' },
   { id: 'catalogos', label: 'Catálogos' },
   { id: 'historial', label: 'Historial' },
@@ -110,6 +113,7 @@ export async function renderQcProjectView(container, projectId) {
     if (tab === 'plan') return renderPlan();
     if (tab === 'entregas') return renderEntregas();
     if (tab === 'observaciones') return obsTab.render();
+    if (tab === 'certificaciones') return certTab.render();
     if (tab === 'participantes') return renderParticipantes();
     if (tab === 'catalogos') return renderCatalogos();
     return renderHistorial();
@@ -119,6 +123,7 @@ export async function renderQcProjectView(container, projectId) {
     if (tab === 'tablero') bindTablero();
     else if (tab === 'entregas') bindEntregas();
     else if (tab === 'observaciones') obsTab.bind(container);
+    else if (tab === 'certificaciones') certTab.bind(container);
     else if (tab === 'plan') bindPlan();
     else if (tab === 'participantes') bindParticipantes();
     else if (tab === 'catalogos') bindCatalogos();
@@ -200,7 +205,8 @@ export async function renderQcProjectView(container, projectId) {
   /** La persona del proyecto que corresponde a la cuenta de Google con la que se entró. */
   const yoSoy = () => (miCorreo ? personas().find((x) => (x.correo || '').toLowerCase() === miCorreo) : null);
 
-  const obsTab = createObservacionesTab({
+  // Lo que necesitan las pantallas de observaciones y de firma.
+  const firmaCtx = {
     getData: () => data,
     save,
     commit: (ops, note) => qcCommit(projectId, ops, note),
@@ -211,7 +217,9 @@ export async function renderQcProjectView(container, projectId) {
     isAdmin: isAdmin(email),
     yoSoy,
     nombreDe,
-  });
+  };
+  const obsTab = createObservacionesTab({ ...firmaCtx, certificar: (args) => certificar(firmaCtx, args) });
+  const certTab = createCertificacionesTab(firmaCtx);
 
   function renderQuienSoy() {
     const yo = yoSoy();
@@ -382,6 +390,25 @@ export async function renderQcProjectView(container, projectId) {
           patch.plazoTexto = r.plazoTexto;
           patch.plazoParseado = parsePlazo(r.plazoTexto);
         }
+        if (a.estado === 'terminada' && r.estado !== 'terminada') {
+          toast('Esta actividad está certificada. Para cambiarla, anula la certificación en la pestaña Certificaciones.');
+          return;
+        }
+        if (r.estado === 'terminada' && a.estado !== 'terminada') {
+          // Terminar una actividad es certificarla: pide PIN y deja la firma en el mismo evento.
+          const firmada = await certificar(firmaCtx, {
+            tipo: 'actividad',
+            registro: a,
+            refTabla: 'actividades',
+            refCodigo: a.codigo,
+            accion: 'terminada',
+            nota: `Actividad ${a.codigo} terminada y certificada`,
+            resumen: a.descripcion.slice(0, 160),
+            cambios: [{ op: 'set', table: 'actividades', id: a.id, patch }],
+          });
+          if (firmada) paint();
+          return;
+        }
         await save('actividades', a.id, patch, `Actividad ${a.codigo} editada`);
         paint();
       })
@@ -512,7 +539,10 @@ export async function renderQcProjectView(container, projectId) {
                     ${desfaseReingreso != null ? `<p class="qc-person-meta qc-warn">↪️ Reingreso completo ${desfaseReingreso} día(s) hábil(es) después de la devolución de ${escapeHTML(devueltaPrevia.version || 'la entrega anterior')}</p>` : ''}
                     ${atraso > 0 ? `<p class="qc-person-meta qc-warn">⏰ Atraso de ${atraso} día(s) hábil(es) respecto de la fecha prevista (${escapeHTML(formatFecha(e.fechaRecepcion))})</p>` : ''}
                     ${bloq ? `<p class="qc-person-meta">🔒 ${bloq} observación(es) impiden aprobarla</p>` : ''}
+                    ${x.aprobacion1Por ? `<p class="qc-person-meta">✍️ ${x.estado === ESTADO_ENTREGA.aprobada ? 'Aprobada' : 'Recomendada'} por ${escapeHTML(nombreDe(x.aprobacion1Por))}${x.aprobacion2Por ? ' y ' + escapeHTML(nombreDe(x.aprobacion2Por)) + ' (Gobernanza)' : ''}</p>` : ''}
+                    ${puedeSegundaFirma(x) ? '<p class="qc-person-meta qc-warn">⏳ Falta la segunda firma de Gobernanza</p>' : ''}
                   </div>
+                  ${puedeSegundaFirma(x) && (isAdmin(email) || yoSoy()?.rol === 'gobernanza') && x.aprobacion1Por !== miCorreo ? `<button type="button" class="btn btn-primary" data-firma2="${x.id}">✍️ Firmar</button>` : ''}
                   <button type="button" class="icon-btn" data-edit-entrega="${x.id}" title="Editar">✏️</button>
                 </li>`;
             }).join('') || '<li class="qc-hint">Todavía no llega ninguna entrega de esta etapa.</li>'}
@@ -522,6 +552,7 @@ export async function renderQcProjectView(container, projectId) {
   }
 
   const SI_NO = [{ value: 'si', label: 'Sí' }, { value: 'no', label: 'No' }];
+  const puedeSegundaFirma = (x) => x.requiereSegundaFirma && x.estado === ESTADO_ENTREGA.recomendada && x.aprobacion1Por && !x.aprobacion2Por;
 
   async function registrarEntrega(etapaId) {
     const etapa = data.etapas.find((e) => e.id === etapaId);
@@ -565,6 +596,7 @@ export async function renderQcProjectView(container, projectId) {
         { name: 'fechaRecepcion', label: 'Fecha de recepción', type: 'date', value: x.fechaRecepcion || '' },
         { name: 'fechaInforme', label: 'Fecha del informe de revisión', type: 'date', value: x.fechaInforme || '' },
         { name: 'completa', label: '¿Viene completa?', type: 'select', value: x.completa === false ? 'no' : 'si', options: SI_NO },
+        { name: 'requiereSegundaFirma', label: '¿La aprobación necesita la segunda firma de Gobernanza?', type: 'select', value: x.requiereSegundaFirma ? 'si' : 'no', options: SI_NO },
         { name: 'version', label: 'Versión', value: x.version || '', maxlength: 20 },
       ],
     });
@@ -576,20 +608,73 @@ export async function renderQcProjectView(container, projectId) {
     }
     const completa = r.completa !== 'no';
     const estado = !completa ? ESTADO_ENTREGA.devuelta : r.estado === ESTADO_ENTREGA.devuelta ? ESTADO_ENTREGA.enRevision : r.estado;
-    await save('entregas', x.id, {
+    const patch = {
       estado,
       fechaRecepcion: r.fechaRecepcion || null,
       fechaInforme: r.fechaInforme || null,
       completa,
       version: r.version,
+      requiereSegundaFirma: r.requiereSegundaFirma === 'si',
       fechaDevolucion: !completa ? (x.fechaDevolucion || hoyISO()) : null,
-    }, `Entrega ${x.version} editada`);
+    };
+    // Una entrega aprobada está certificada: solo se cambia anulando la certificación.
+    if (x.estado === ESTADO_ENTREGA.aprobada && estado !== ESTADO_ENTREGA.aprobada) {
+      toast('Esta entrega está aprobada y certificada. Para cambiarla, anula la certificación en la pestaña Certificaciones.');
+      return;
+    }
+    if (estado === ESTADO_ENTREGA.aprobada && x.estado !== ESTADO_ENTREGA.aprobada) {
+      // Aprobar es certificar: solo el responsable del proyecto (o un administrador) y con su PIN.
+      if (!(isAdmin(email) || yoSoy()?.rol === 'responsable')) {
+        toast('Solo el responsable del proyecto puede aprobar una entrega.');
+        return;
+      }
+      const dos = patch.requiereSegundaFirma;
+      const firmada = await certificar(firmaCtx, {
+        tipo: 'entrega',
+        registro: x,
+        refTabla: 'entregas',
+        refCodigo: `${etapa.codigo} · ${x.version}`,
+        accion: dos ? 'recomendada' : 'aprobada',
+        nota: dos ? `Entrega ${x.version} recomendada para aprobación (falta segunda firma)` : `Entrega ${x.version} aprobada y certificada`,
+        resumen: `${etapa.nombre} · ${x.version}`,
+        cambios: [{ op: 'set', table: 'entregas', id: x.id, patch: dos ? { ...patch, estado: ESTADO_ENTREGA.recomendada, aprobacion1Por: miCorreo, aprobacion2Por: null } : { ...patch, aprobacion1Por: miCorreo, fechaAprobacion: hoyISO() } }],
+      });
+      if (firmada) {
+        if (dos) toast('Falta la segunda firma de Gobernanza para aprobarla.');
+        paint();
+      }
+      return;
+    }
+    await save('entregas', x.id, patch, `Entrega ${x.version} editada`);
     paint();
+  }
+
+  /** Segunda firma (gobernanza) que completa la aprobación de una entrega. */
+  async function segundaFirma(entregaId) {
+    const x = data.entregas.find((e) => e.id === entregaId);
+    const etapa = data.etapas.find((e) => e.id === x.etapaId);
+    if (observacionesBloqueantes(data, x.id).length) {
+      toast('No se puede aprobar: hay observaciones que la impiden.');
+      return;
+    }
+    const firmada = await certificar(firmaCtx, {
+      tipo: 'entrega',
+      registro: x,
+      refTabla: 'entregas',
+      refCodigo: `${etapa.codigo} · ${x.version}`,
+      accion: 'aprobada',
+      nivel: 2,
+      nota: `Entrega ${x.version} aprobada con segunda firma`,
+      resumen: `${etapa.nombre} · ${x.version} (segunda firma)`,
+      cambios: [{ op: 'set', table: 'entregas', id: x.id, patch: { estado: ESTADO_ENTREGA.aprobada, aprobacion2Por: miCorreo, fechaAprobacion: hoyISO() } }],
+    });
+    if (firmada) paint();
   }
 
   function bindEntregas() {
     container.querySelectorAll('[data-new-entrega]').forEach((b) => b.addEventListener('click', () => registrarEntrega(b.dataset.newEntrega)));
     container.querySelectorAll('[data-edit-entrega]').forEach((b) => b.addEventListener('click', () => editarEntrega(b.dataset.editEntrega)));
+    container.querySelectorAll('[data-firma2]').forEach((b) => b.addEventListener('click', () => segundaFirma(b.dataset.firma2)));
   }
 
   // ---------- Participantes ----------
@@ -611,7 +696,9 @@ export async function renderQcProjectView(container, projectId) {
                 <span class="qc-role-tag">${escapeHTML(roleLabel(x.rol))}</span>
                 <p class="qc-person-meta">${escapeHTML([x.cargo, x.empresa, x.correo].filter(Boolean).join(' · ') || 'Sin datos')}</p>
                 ${x.activo === false ? '<p class="qc-person-meta">Inactivo</p>' : ''}
+                ${x.correo ? `<p class="qc-person-meta">${tienePin(data.pines.find((p) => p.id === idPin(x.correo) && !p.anulado)) ? '🔐 Ya creó su PIN y su firma' : 'Sin PIN todavía (lo crea la primera vez que firme)'}</p>` : ''}
               </div>
+              ${isAdmin(email) && x.correo && tienePin(data.pines.find((p) => p.id === idPin(x.correo) && !p.anulado)) ? `<button type="button" class="icon-btn" data-reset-pin="${escapeHTML(x.correo)}" title="Restablecer PIN y firma">🔑</button>` : ''}
               <button type="button" class="icon-btn" data-edit-person="${x.id}" title="Editar">✏️</button>
             </li>
           `).join('') || '<li class="empty-state">Todavía no hay participantes.</li>'}
@@ -641,6 +728,14 @@ export async function renderQcProjectView(container, projectId) {
 
   function bindParticipantes() {
     container.querySelector('#qc-add-participant').addEventListener('click', () => editPerson(null));
+    container.querySelectorAll('[data-reset-pin]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const correo = b.dataset.resetPin;
+        if (!(await confirmDialog(`¿Restablecer el PIN y la firma de ${correo}? Tendrá que crear unos nuevos la próxima vez que firme. Las firmas ya hechas no cambian.`, 'Restablecer'))) return;
+        await reiniciarPin(firmaCtx, correo);
+        paint();
+      })
+    );
     container.querySelectorAll('[data-edit-person]').forEach((b) =>
       b.addEventListener('click', () => editPerson(data.participantes.find((x) => x.id === b.dataset.editPerson)))
     );

@@ -182,7 +182,7 @@ export function promptDialog({ title, fields, confirmLabel = 'Guardar', cancelLa
   });
 }
 
-export function confirmDialog(message) {
+export function confirmDialog(message, confirmLabel = 'Eliminar') {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -191,7 +191,7 @@ export function confirmDialog(message) {
         <p class="modal-message">${escapeHTML(message)}</p>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" data-action="cancel">Cancelar</button>
-          <button type="button" class="btn btn-danger" data-action="confirm">Eliminar</button>
+          <button type="button" class="btn btn-danger" data-action="confirm">${escapeHTML(confirmLabel)}</button>
         </div>
       </div>
     `;

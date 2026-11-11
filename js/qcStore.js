@@ -14,7 +14,7 @@ import { uuid } from './utils.js';
 import { getSignedInEmail } from './googleDrive.js';
 import { qcCommitEvent, qcGetEventsByProject, qcGetRecordsByProject, qcGetRecordsByTable } from './db.js';
 
-export const QC_TABLES = ['proyectos', 'participantes', 'etapas', 'entregas', 'actividades', 'observaciones', 'certificaciones', 'catalogos'];
+export const QC_TABLES = ['proyectos', 'participantes', 'etapas', 'entregas', 'actividades', 'observaciones', 'certificaciones', 'pines', 'catalogos'];
 
 const LAST_EMAIL_KEY = 'qc-last-email';
 
@@ -171,7 +171,7 @@ export async function qcListProjects(obraId) {
  */
 export async function qcLoadProject(projectId) {
   const records = await qcGetRecordsByProject(projectId);
-  const data = { proyecto: null, participantes: [], etapas: [], entregas: [], actividades: [], observaciones: [], certificaciones: [], catalogos: {} };
+  const data = { proyecto: null, participantes: [], etapas: [], entregas: [], actividades: [], observaciones: [], certificaciones: [], pines: [], catalogos: {} };
   for (const r of records) {
     const flat = flatten(r);
     if (r.table === 'proyectos') data.proyecto = flat;

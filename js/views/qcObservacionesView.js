@@ -312,7 +312,20 @@ export function createObservacionesTab(ctx) {
       if (acc === 'responder') return formularioRespuesta(o);
       if (acc === 'verificacion') await ctx.save('observaciones', o.id, { estado: ESTADO_OBS.verificacion }, nota('en verificación'));
       else if (acc === 'solucion') await ctx.save('observaciones', o.id, { solucionAcordada: true }, nota('con solución acordada'));
-      else if (acc === 'cerrar') await ctx.save('observaciones', o.id, { estado: ESTADO_OBS.cerrada, fechaCierre: hoyISO(), verificadaPor: ctx.miCorreo || null }, nota('verificada y cerrada'));
+      else if (acc === 'cerrar') {
+        // Cerrar una observación es certificarla: pide PIN y deja la firma en el mismo evento.
+        const firmada = await ctx.certificar({
+          tipo: 'observacion',
+          registro: o,
+          refTabla: 'observaciones',
+          refCodigo: o.numero,
+          accion: 'cerrada',
+          nota: nota('verificada, cerrada y certificada'),
+          resumen: (o.texto || '').slice(0, 160),
+          cambios: [{ op: 'set', table: 'observaciones', id: o.id, patch: { estado: ESTADO_OBS.cerrada, fechaCierre: hoyISO(), verificadaPor: ctx.miCorreo || null } }],
+        });
+        if (!firmada) return;
+      }
       else if (acc === 'reabrir') {
         const r = await promptDialog({ title: `Reabrir N° ${o.numero}`, fields: [{ name: 'motivo', label: 'Por qué la corrección no resuelve la observación', type: 'textarea', maxlength: 500 }], confirmLabel: 'Reabrir' });
         if (!r?.motivo) return;

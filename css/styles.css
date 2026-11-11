@@ -3519,3 +3519,7 @@ button {
 .qc-foto img, .qc-thumb { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; cursor: pointer; }
 .qc-foto button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: #991b1b; color: #fff; font-size: 12px; cursor: pointer; }
 .qc-lightbox { max-width: 96vw; max-height: 92vh; border-radius: 8px; }
+
+.qc-firma-box { display: flex; align-items: center; gap: 12px; margin: 10px 0; flex-wrap: wrap; }
+.qc-firma-box img { max-width: 220px; max-height: 90px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.qc-obs-modal input[type="password"] { display: block; width: 100%; margin-top: 4px; padding: 9px 10px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; font-size: 20px; letter-spacing: 6px; text-align: center; color: #111827; background: #f4f5f7; box-sizing: border-box; }

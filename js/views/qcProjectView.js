@@ -20,6 +20,8 @@ const TABS = [
 const ESTADOS_ACTIVIDAD = [
   { value: 'pendiente', label: 'Pendiente' },
   { value: 'en_curso', label: 'En curso' },
+  { value: 'terminada', label: 'Completada' },
+  { value: 'no_aplica', label: 'No aplica' },
 ];
 
 const BLOQUEA = [
@@ -209,8 +211,9 @@ export async function renderQcProjectView(container, projectId) {
         <p class="qc-activity-meta">
           <span>👤 ${escapeHTML(a.responsableTexto || 'Sin responsable')}</span>
           <span>⏱ ${escapeHTML(a.plazoTexto || '—')}</span>
-          ${vence}
+          ${a.estado === 'terminada' ? `<span class="qc-due calculada">✅ Cumplida el ${escapeHTML(formatFecha(a.fechaCumplida || ''))}${v?.hasta && a.fechaCumplida && a.fechaCumplida > v.hasta ? ' · ⚠️ fuera de plazo' : ''}</span>` : a.estado === 'no_aplica' ? '' : (v?.hasta && v.hasta < hoyISO() ? `<span class="qc-due">⚠️ Atrasada · venció ${escapeHTML(formatFecha(v.hasta))}</span>` : vence)}
         </p>
+        ${a.nota ? `<p class="qc-hint">📝 ${escapeHTML(a.nota)}</p>` : ''}
       </li>
     `;
   }
@@ -271,6 +274,7 @@ export async function renderQcProjectView(container, projectId) {
           fields: [
             { name: 'estado', label: 'Estado', type: 'select', value: a.estado, options: ESTADOS_ACTIVIDAD },
             { name: 'fechaManual', label: 'Fecha límite puesta a mano (déjala vacía para usar el cálculo)', type: 'date', value: a.fechaManual || '' },
+            { name: 'nota', label: 'Nota del control (qué se revisó, resultado)', value: a.nota || '' },
             { name: 'responsableTexto', label: 'Responsable', value: a.responsableTexto || '' },
             { name: 'plazoTexto', label: 'Plazo (texto)', value: a.plazoTexto || '' },
           ],
@@ -278,6 +282,10 @@ export async function renderQcProjectView(container, projectId) {
         if (!r) return;
         const patch = {
           estado: r.estado,
+          nota: r.nota || '',
+          // Al marcarla completada queda la fecha en que se cumplió; si se
+          // devuelve a otro estado, se limpia.
+          fechaCumplida: r.estado === 'terminada' ? (a.fechaCumplida || hoyISO()) : null,
           fechaManual: r.fechaManual || null,
           responsableTexto: r.responsableTexto,
           plazoTexto: r.plazoTexto,
@@ -303,7 +311,7 @@ export async function renderQcProjectView(container, projectId) {
       .filter((r) => r.vence)
       .sort((a, b) => a.vence.localeCompare(b.vence));
 
-    const actividades = data.actividades.filter((a) => !a.anulado && a.estado !== 'terminada');
+    const actividades = data.actividades.filter((a) => !a.anulado && a.estado !== 'terminada' && a.estado !== 'no_aplica');
     const limite = addCalendarDays(hoy, 14);
     const porVencer = actividades
       .map((a) => {

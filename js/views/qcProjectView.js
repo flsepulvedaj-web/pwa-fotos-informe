@@ -84,7 +84,7 @@ export async function renderQcProjectView(container, projectId) {
       <nav class="qc-tabs">
         ${TABS.map((t) => `<button type="button" class="qc-tab${t.id === tab ? ' active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('')}
       </nav>
-      <main class="view-content qc-content" id="qc-content">${renderTab()}</main>
+      <main class="view-content qc-content" id="qc-content">${renderQuienSoy()}${renderTab()}</main>
     `;
     container.querySelector('#btn-back').addEventListener('click', () => navigate(p.obraId ? `/control/obra/${p.obraId}/calidad` : '/calidad'));
     container.querySelectorAll('.qc-tab').forEach((b) =>
@@ -191,6 +191,20 @@ export async function renderQcProjectView(container, projectId) {
   const miCorreo = (email || '').toLowerCase();
   const personas = () => data.participantes.filter((x) => !x.anulado && x.activo !== false);
   const nombreDe = (correo) => personas().find((x) => (x.correo || '').toLowerCase() === (correo || '').toLowerCase())?.nombre || correo || '';
+
+  /** La persona del proyecto que corresponde a la cuenta de Google con la que se entró. */
+  const yoSoy = () => (miCorreo ? personas().find((x) => (x.correo || '').toLowerCase() === miCorreo) : null);
+
+  function renderQuienSoy() {
+    const yo = yoSoy();
+    if (yo) {
+      return `<p class="qc-whoami ok">👤 Entraste como <strong>${escapeHTML(yo.nombre || email)}</strong>${yo.cargo ? ' · ' + escapeHTML(yo.cargo) : ''} <span>(${escapeHTML(roleLabel(yo.rol))})</span></p>`;
+    }
+    if (isAdmin(email)) {
+      return `<p class="qc-whoami">👤 Entraste como administrador (${escapeHTML(email)}). Para que la app te reconozca con tu cargo, pon tu correo en <strong>Participantes</strong>.</p>`;
+    }
+    return `<p class="qc-whoami warn">⚠️ Tu cuenta (${escapeHTML(email || 'sin sesión')}) no está en la lista de participantes de este proyecto. Solo podrás mirar.</p>`;
+  }
 
   /** Persona responsable de una actividad: la elegida a mano o, si no hay, la
    * que tiene ese cargo en el proyecto. */
@@ -367,6 +381,15 @@ export async function renderQcProjectView(container, projectId) {
       .filter((r) => r.hasta && r.hasta <= limite)
       .sort((a, b) => a.hasta.localeCompare(b.hasta));
 
+    const yo = yoSoy();
+    const mias = yo ? actividades.filter((a) => personaDe(a)?.id === yo.id) : [];
+    const misActividades = yo
+      ? `<section class="qc-card"><h3>Mis actividades pendientes (${mias.length})</h3><ul class="qc-people">${
+          mias.slice(0, 8).map((a) => `<li class="qc-person"><div><strong>${escapeHTML(a.codigo)}</strong> ${escapeHTML(a.descripcion.slice(0, 90))}${a.descripcion.length > 90 ? '…' : ''}</div></li>`).join('') ||
+          '<li class="qc-hint">No tienes actividades pendientes. 🎉</li>'
+        }</ul>${mias.length > 8 ? `<p class="qc-hint">y ${mias.length - 8} más en Plan de calidad.</p>` : ''}</section>`
+      : '';
+
     const abiertas = data.observaciones.filter((o) => !o.anulado && o.estado !== 'Cerrada');
     const porCategoria = (data.catalogos.categorias || []).map((c) => ({ c, n: abiertas.filter((o) => o.categoria === c.codigo).length }));
 
@@ -378,6 +401,7 @@ export async function renderQcProjectView(container, projectId) {
         ${tile(vencidas.length, 'Vencidas', vencidas.length ? 'bad' : '')}
         ${tile(actividades.length, 'Actividades pendientes')}
       </section>
+      ${misActividades}
       <section class="qc-card">
         <h3>Observaciones abiertas</h3>
         <p class="qc-chips">${porCategoria.map(({ c, n }) => `<span class="qc-chip">${escapeHTML(c.codigo)} · ${escapeHTML(c.nombre)}: <strong>${n}</strong></span>`).join('') || '<span class="qc-hint">Sin categorías.</span>'}</p>

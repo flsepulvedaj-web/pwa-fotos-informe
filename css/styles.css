@@ -3470,3 +3470,15 @@ button {
   border-color: var(--color-danger);
   background: #fef2f2;
 }
+
+.qc-whoami {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #1e2a5a;
+  font-size: 13px;
+}
+.qc-whoami.ok { background: #dcfce7; color: #166534; }
+.qc-whoami.warn { background: #fef3c7; color: #92400e; }
+.qc-whoami span { opacity: 0.8; }

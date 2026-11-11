@@ -3428,3 +3428,45 @@ button {
   background: #fee2e2;
   color: #991b1b;
 }
+
+.qc-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 700px) {
+  .qc-kpis {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.qc-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+}
+
+.qc-kpi-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.qc-kpi-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.qc-kpi.bad .qc-kpi-value {
+  color: var(--color-danger);
+}
+
+.qc-person.overdue {
+  border-color: var(--color-danger);
+  background: #fef2f2;
+}

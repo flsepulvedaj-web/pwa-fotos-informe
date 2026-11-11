@@ -2,12 +2,16 @@ import { getSignedInEmail } from '../googleDrive.js';
 import { modulesForEmail, getCachedPermissions } from '../permissions.js';
 import { qcLoadProject, qcCommit, qcHistory, qcVerifyChain, qcNewId } from '../qcStore.js';
 import { QC_ROLES, roleLabel } from '../qcTemplates.js';
-import { ventanaActividad, formatFecha, parsePlazo } from '../qcDates.js';
+import { ventanaActividad, formatFecha, parsePlazo, addCalendarDays } from '../qcDates.js';
+import { qcSyncProject, onQcChange } from '../qcSync.js';
+import { ESTADO_ENTREGA, hoyISO, ordenarEntregas, venceEntrega, entregaVencida, etapaEfectiva, observacionesBloqueantes } from '../qcEntregas.js';
 import { navigate } from '../router.js';
 import { promptDialog, toast, escapeHTML } from '../utils.js';
 
 const TABS = [
+  { id: 'tablero', label: 'Tablero' },
   { id: 'plan', label: 'Plan de calidad' },
+  { id: 'entregas', label: 'Entregas' },
   { id: 'participantes', label: 'Participantes' },
   { id: 'catalogos', label: 'Catálogos' },
   { id: 'historial', label: 'Historial' },
@@ -26,8 +30,6 @@ const BLOQUEA = [
 
 const LISTAS_EDITABLES = [
   { id: 'especialidades', titulo: 'Especialidades', tipo: 'nombre' },
-  { id: 'estadosEntrega', titulo: 'Estados de una entrega', tipo: 'texto' },
-  { id: 'estadosObservacion', titulo: 'Estados de una observación', tipo: 'texto' },
   { id: 'feriados', titulo: 'Feriados (para los días hábiles)', tipo: 'feriado' },
 ];
 
@@ -54,7 +56,7 @@ export async function renderQcProjectView(container, projectId) {
     return;
   }
 
-  let tab = 'plan';
+  let tab = 'tablero';
   const openStages = new Set();
   let firstPaint = true;
 
@@ -99,14 +101,18 @@ export async function renderQcProjectView(container, projectId) {
   let integrity = null;
 
   function renderTab() {
+    if (tab === 'tablero') return renderTablero();
     if (tab === 'plan') return renderPlan();
+    if (tab === 'entregas') return renderEntregas();
     if (tab === 'participantes') return renderParticipantes();
     if (tab === 'catalogos') return renderCatalogos();
     return renderHistorial();
   }
 
   function bindTab() {
-    if (tab === 'plan') bindPlan();
+    if (tab === 'tablero') bindTablero();
+    else if (tab === 'entregas') bindEntregas();
+    else if (tab === 'plan') bindPlan();
     else if (tab === 'participantes') bindParticipantes();
     else if (tab === 'catalogos') bindCatalogos();
     else bindHistorial();
@@ -143,7 +149,11 @@ export async function renderQcProjectView(container, projectId) {
     `;
   }
 
+  const entregasDe = (etapaId) => data.entregas.filter((x) => x.etapaId === etapaId && !x.anulado);
+  const etapaEf = (e) => etapaEfectiva(e, entregasDe(e.id));
+
   function renderStage(e) {
+    const ee = etapaEf(e);
     const acts = data.actividades.filter((a) => a.etapaId === e.id && !a.anulado);
     const open = openStages.has(e.id);
     const chips = [e.semana, e.referencia, e.hito].filter(Boolean);
@@ -165,9 +175,11 @@ export async function renderQcProjectView(container, projectId) {
                   <input type="number" min="1" max="60" data-stage-days="${e.id}" value="${e.plazoRevisionDias}" />
                 </label>
               </div>
-              <p class="qc-hint">Al poner la fecha de recepción se calculan los plazos de las actividades en días hábiles, con feriados de Chile.</p>
+              <p class="qc-hint">${ee.fechaRecepcionReal
+                ? `📌 Se usa la fecha real de la entrega (${formatFecha(ee.fechaRecepcion)}), registrada en la pestaña Entregas.`
+                : 'Al poner la fecha de recepción se calculan los plazos de las actividades en días hábiles, con feriados de Chile.'}</p>
             ` : ''}
-            <ul class="qc-activities">${acts.map((a) => renderActivity(a, e)).join('')}</ul>
+            <ul class="qc-activities">${acts.map((a) => renderActivity(a, ee)).join('')}</ul>
           </div>
         ` : ''}
       </section>
@@ -277,6 +289,178 @@ export async function renderQcProjectView(container, projectId) {
     );
   }
 
+  // ---------- Tablero ----------
+
+  function renderTablero() {
+    const hoy = hoyISO();
+    const etapas = data.etapas.filter((e) => !e.anulado);
+    const entregas = data.entregas.filter((x) => !x.anulado);
+    const etapaDe = (x) => etapas.find((e) => e.id === x.etapaId);
+    const vencidas = entregas.filter((x) => entregaVencida(x, etapaDe(x), holidays(), hoy));
+    const enRevision = entregas.filter((x) => [ESTADO_ENTREGA.recibida, ESTADO_ENTREGA.enRevision, ESTADO_ENTREGA.reentrega].includes(x.estado));
+    const proximas = enRevision
+      .map((x) => ({ x, vence: venceEntrega(x, etapaDe(x), holidays()) }))
+      .filter((r) => r.vence)
+      .sort((a, b) => a.vence.localeCompare(b.vence));
+
+    const actividades = data.actividades.filter((a) => !a.anulado && a.estado !== 'terminada');
+    const limite = addCalendarDays(hoy, 14);
+    const porVencer = actividades
+      .map((a) => {
+        const etapa = etapas.find((e) => e.id === a.etapaId);
+        const v = etapa ? ventanaActividad(a, etapaEf(etapa), data.proyecto, holidays()) : null;
+        return { a, hasta: v?.hasta || null };
+      })
+      .filter((r) => r.hasta && r.hasta <= limite)
+      .sort((a, b) => a.hasta.localeCompare(b.hasta));
+
+    const abiertas = data.observaciones.filter((o) => !o.anulado && o.estado !== 'Cerrada');
+    const porCategoria = (data.catalogos.categorias || []).map((c) => ({ c, n: abiertas.filter((o) => o.categoria === c.codigo).length }));
+
+    const tile = (valor, etiqueta, clase = '') => `<div class="qc-kpi ${clase}"><span class="qc-kpi-value">${valor}</span><span class="qc-kpi-label">${etiqueta}</span></div>`;
+    return `
+      <section class="qc-kpis">
+        ${tile(entregas.length, 'Entregas registradas')}
+        ${tile(enRevision.length, 'En revisión')}
+        ${tile(vencidas.length, 'Vencidas', vencidas.length ? 'bad' : '')}
+        ${tile(actividades.length, 'Actividades pendientes')}
+      </section>
+      <section class="qc-card">
+        <h3>Observaciones abiertas</h3>
+        <p class="qc-chips">${porCategoria.map(({ c, n }) => `<span class="qc-chip">${escapeHTML(c.codigo)} · ${escapeHTML(c.nombre)}: <strong>${n}</strong></span>`).join('') || '<span class="qc-hint">Sin categorías.</span>'}</p>
+        ${data.observaciones.length ? '' : '<p class="qc-hint">Todavía no hay observaciones (se registran en el paso siguiente del módulo).</p>'}
+      </section>
+      <section class="qc-card">
+        <h3>Plazos de revisión que corren</h3>
+        <ul class="qc-people">
+          ${proximas.map(({ x, vence }) => {
+            const et = etapaDe(x);
+            const vencida = vence < hoy;
+            return `<li class="qc-person${vencida ? ' overdue' : ''}"><div><strong>${escapeHTML(et?.codigo || '')} · ${escapeHTML(et?.nombre || '')} (${escapeHTML(x.version || '')})</strong><p class="qc-person-meta">${vencida ? '⚠️ Vencida el' : 'Vence el'} ${escapeHTML(formatFecha(vence))}</p></div></li>`;
+          }).join('') || '<li class="qc-hint">No hay revisiones en curso.</li>'}
+        </ul>
+      </section>
+      <section class="qc-card">
+        <h3>Actividades con fecha en los próximos 14 días</h3>
+        <ul class="qc-people">
+          ${porVencer.map(({ a, hasta }) => `<li class="qc-person${hasta < hoy ? ' overdue' : ''}"><div><strong>${escapeHTML(a.codigo)}</strong> ${escapeHTML(a.descripcion.slice(0, 90))}${a.descripcion.length > 90 ? '…' : ''}<p class="qc-person-meta">${hasta < hoy ? '⚠️ Venció el' : 'Vence el'} ${escapeHTML(formatFecha(hasta))} · ${escapeHTML(a.responsableTexto || '')}</p></div></li>`).join('') || '<li class="qc-hint">Nada por vencer. Si no ves actividades, falta poner fechas de recepción o de inicio.</li>'}
+        </ul>
+      </section>
+    `;
+  }
+
+  function bindTablero() {}
+
+  // ---------- Entregas ----------
+
+  function renderEntregas() {
+    const etapas = data.etapas.filter((e) => !e.anulado && e.plazoRevisionDias != null);
+    const hoy = hoyISO();
+    if (!etapas.length) return '<div class="empty-state"><p>Este proyecto no tiene etapas con entregas.</p></div>';
+    return etapas.map((e) => {
+      const entregas = ordenarEntregas(entregasDe(e.id));
+      return `
+        <section class="qc-card">
+          <div class="qc-card-header">
+            <h3><span class="qc-code">${escapeHTML(e.codigo)}</span> ${escapeHTML(e.nombre)}</h3>
+            <button type="button" class="btn btn-primary" data-new-entrega="${e.id}">➕ Registrar entrega</button>
+          </div>
+          <p class="qc-hint">Plazo de revisión: ${e.plazoRevisionDias} días hábiles desde la recepción de la entrega completa.</p>
+          <ul class="qc-people">
+            ${entregas.map((x) => {
+              const vence = venceEntrega(x, e, holidays());
+              const vencida = entregaVencida(x, e, holidays(), hoy);
+              const bloq = observacionesBloqueantes(data, x.id).length;
+              return `
+                <li class="qc-person${vencida ? ' overdue' : ''}${x.estado === ESTADO_ENTREGA.devuelta ? ' inactive' : ''}">
+                  <div>
+                    <strong>${escapeHTML(x.version || 'Entrega')}</strong>
+                    <span class="qc-role-tag">${escapeHTML(x.estado || '')}</span>
+                    <p class="qc-person-meta">Recibida ${escapeHTML(formatFecha(x.fechaRecepcion))} · ${x.completa === false ? '❌ incompleta' : '✅ completa'}${x.notaRemisoria ? ' · con nota remisoria' : ''}</p>
+                    ${vence ? `<p class="qc-person-meta">${vencida ? '⚠️ Revisión vencida el' : 'Revisión vence el'} ${escapeHTML(formatFecha(vence))}</p>` : ''}
+                    ${x.fechaInforme ? `<p class="qc-person-meta">Informe de revisión: ${escapeHTML(formatFecha(x.fechaInforme))}</p>` : ''}
+                    ${x.fechaDevolucion ? `<p class="qc-person-meta">Devuelta el ${escapeHTML(formatFecha(x.fechaDevolucion))}</p>` : ''}
+                    ${bloq ? `<p class="qc-person-meta">🔒 ${bloq} observación(es) impiden aprobarla</p>` : ''}
+                  </div>
+                  <button type="button" class="icon-btn" data-edit-entrega="${x.id}" title="Editar">✏️</button>
+                </li>`;
+            }).join('') || '<li class="qc-hint">Todavía no llega ninguna entrega de esta etapa.</li>'}
+          </ul>
+        </section>`;
+    }).join('');
+  }
+
+  const SI_NO = [{ value: 'si', label: 'Sí' }, { value: 'no', label: 'No' }];
+
+  async function registrarEntrega(etapaId) {
+    const etapa = data.etapas.find((e) => e.id === etapaId);
+    const previas = entregasDe(etapaId);
+    const r = await promptDialog({
+      title: `Registrar entrega — ${etapa.nombre}`,
+      fields: [
+        { name: 'version', label: 'Versión', value: `v${previas.length + 1}`, maxlength: 20 },
+        { name: 'fechaRecepcion', label: 'Fecha de recepción', type: 'date', value: hoyISO() },
+        { name: 'completa', label: '¿La entrega viene completa?', type: 'select', value: 'si', options: SI_NO },
+        { name: 'notaRemisoria', label: '¿Viene con nota remisoria firmada?', type: 'select', value: 'si', options: SI_NO },
+      ],
+      confirmLabel: 'Registrar',
+    });
+    if (!r || !r.fechaRecepcion) return;
+    const completa = r.completa !== 'no';
+    const hayCompletaPrevia = previas.some((x) => x.completa !== false && x.estado !== ESTADO_ENTREGA.devuelta);
+    const patch = {
+      etapaId,
+      version: r.version || `v${previas.length + 1}`,
+      fechaRecepcion: r.fechaRecepcion,
+      completa,
+      notaRemisoria: r.notaRemisoria !== 'no',
+      estado: !completa ? ESTADO_ENTREGA.devuelta : hayCompletaPrevia ? ESTADO_ENTREGA.reentrega : ESTADO_ENTREGA.enRevision,
+      fechaDevolucion: completa ? null : r.fechaRecepcion,
+      fechaInforme: null,
+    };
+    await save('entregas', qcNewId(), patch, `Entrega ${patch.version} registrada (${etapa.codigo})`);
+    toast(completa ? 'Entrega registrada. Corre el plazo de revisión.' : 'Entrega devuelta por incompleta: el plazo no corre.');
+    paint();
+  }
+
+  async function editarEntrega(entregaId) {
+    const x = data.entregas.find((e) => e.id === entregaId);
+    const etapa = data.etapas.find((e) => e.id === x.etapaId);
+    const estados = data.catalogos.estadosEntrega?.length ? data.catalogos.estadosEntrega : Object.values(ESTADO_ENTREGA);
+    const r = await promptDialog({
+      title: `Entrega ${x.version} — ${etapa.nombre}`,
+      fields: [
+        { name: 'estado', label: 'Estado', type: 'select', value: x.estado, options: estados.map((e) => ({ value: e, label: e })) },
+        { name: 'fechaRecepcion', label: 'Fecha de recepción', type: 'date', value: x.fechaRecepcion || '' },
+        { name: 'fechaInforme', label: 'Fecha del informe de revisión', type: 'date', value: x.fechaInforme || '' },
+        { name: 'completa', label: '¿Viene completa?', type: 'select', value: x.completa === false ? 'no' : 'si', options: SI_NO },
+        { name: 'version', label: 'Versión', value: x.version || '', maxlength: 20 },
+      ],
+    });
+    if (!r) return;
+    const bloqueantes = observacionesBloqueantes(data, x.id);
+    if ([ESTADO_ENTREGA.recomendada, ESTADO_ENTREGA.aprobada].includes(r.estado) && bloqueantes.length) {
+      toast(`No se puede: hay ${bloqueantes.length} observación(es) que impiden recomendar o aprobar esta entrega.`);
+      return;
+    }
+    const completa = r.completa !== 'no';
+    const estado = !completa ? ESTADO_ENTREGA.devuelta : r.estado === ESTADO_ENTREGA.devuelta ? ESTADO_ENTREGA.enRevision : r.estado;
+    await save('entregas', x.id, {
+      estado,
+      fechaRecepcion: r.fechaRecepcion || null,
+      fechaInforme: r.fechaInforme || null,
+      completa,
+      version: r.version,
+      fechaDevolucion: !completa ? (x.fechaDevolucion || hoyISO()) : null,
+    }, `Entrega ${x.version} editada`);
+    paint();
+  }
+
+  function bindEntregas() {
+    container.querySelectorAll('[data-new-entrega]').forEach((b) => b.addEventListener('click', () => registrarEntrega(b.dataset.newEntrega)));
+    container.querySelectorAll('[data-edit-entrega]').forEach((b) => b.addEventListener('click', () => editarEntrega(b.dataset.editEntrega)));
+  }
+
   // ---------- Participantes ----------
 
   function renderParticipantes() {
@@ -383,6 +567,12 @@ export async function renderQcProjectView(container, projectId) {
           </section>
         `;
       }).join('')}
+      <section class="qc-card">
+        <h3>Estados</h3>
+        <p class="qc-hint">Los usa el sistema para sus reglas (plazos, bloqueo de aprobación), por eso no se editan.</p>
+        <p class="qc-chips">${Object.values(ESTADO_ENTREGA).map((t) => `<span class="qc-chip">${escapeHTML(t)}</span>`).join('')}</p>
+        <p class="qc-chips">${(data.catalogos.estadosObservacion || []).map((t) => `<span class="qc-chip">${escapeHTML(t)}</span>`).join('')}</p>
+      </section>
       ${(data.catalogos.indicadores || []).length ? `
         <section class="qc-card">
           <h3>Indicadores de calidad</h3>
@@ -462,4 +652,20 @@ export async function renderQcProjectView(container, projectId) {
   }
 
   paint();
+
+  // Sincroniza con Drive en segundo plano: baja lo que hizo el resto del
+  // equipo y sube lo propio. Nunca pide sesión de Google por su cuenta.
+  const hashAlAbrir = location.hash;
+  const sigueAbierto = () => location.hash === hashAlAbrir && !!container.querySelector('#qc-content');
+  const quitar = onQcChange(async (info) => {
+    if (!sigueAbierto()) {
+      quitar();
+      return;
+    }
+    if (info.projectId && info.projectId !== projectId) return;
+    await reload();
+    paint();
+    toast(`📥 ${info.pulled} cambio(s) del equipo.`);
+  });
+  qcSyncProject(projectId);
 }

@@ -542,6 +542,32 @@ export async function listDriveJSONFiles(parentId) {
 }
 
 /**
+ * Todos los archivos (no carpetas) de una carpeta de Drive, recorriendo todas
+ * las páginas: `listDriveJSONFiles` se queda en 500 y un proyecto de calidad
+ * puede juntar más eventos que eso. Devuelve [{ id, name, modifiedTime }].
+ */
+export async function listDriveFilesAll(parentId) {
+  const token = await signIn();
+  const q = encodeURIComponent(`'${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`);
+  const files = [];
+  let pageToken = '';
+  do {
+    const res = await driveFetch(
+      `https://www.googleapis.com/drive/v3/files?q=${q}&fields=nextPageToken,files(id,name,modifiedTime)&pageSize=1000&spaces=drive${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Error listando archivos de Drive (${res.status}): ${text}`);
+    }
+    const data = await res.json();
+    files.push(...(data.files || []));
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return files;
+}
+
+/**
  * Sube un objeto como archivo .json a una carpeta de Drive. Cada guardado
  * sube un archivo NUEVO (no reemplaza uno existente) — más simple que
  * mantener un id de archivo a actualizar, y el que sincroniza mira siempre

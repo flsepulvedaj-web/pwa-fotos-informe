@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v150';
+const CACHE_VERSION = 'v151';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -20,6 +20,8 @@ const APP_SHELL = [
   './js/qcStore.js',
   './js/qcTemplates.js',
   './js/qcPlanParser.js',
+  './js/qcSync.js',
+  './js/qcEntregas.js',
   './js/aiPhotoReport.js',
   './js/controlChecklistTemplates.js',
   './js/controlScheduleParser.js',

@@ -4,6 +4,7 @@ import { qcListProjects, qcLoadProject, qcCreateProject, qcCommit } from '../qcS
 import { TEMPLATES, catalogOps, templateStageOps } from '../qcTemplates.js';
 import { parseQualityPlanDocx, planToProjectOps } from '../qcPlanParser.js';
 import { getObra } from '../db.js';
+import { qcSyncAll } from '../qcSync.js';
 import { navigate } from '../router.js';
 import { promptDialog, toast, escapeHTML } from '../utils.js';
 
@@ -88,6 +89,16 @@ export async function renderQcHomeView(container, obraId) {
     card.addEventListener('click', () => navigate(`/calidad/proyecto/${card.dataset.id}`));
   });
   container.querySelector('#btn-new-project').addEventListener('click', () => startNewProject(obraId));
+  // Trae de Drive los proyectos y cambios del resto del equipo (en segundo
+  // plano; si llega algo nuevo y sigues en esta pantalla, se repinta).
+  const hashAlAbrir = location.hash;
+  qcSyncAll().then((r) => {
+    if (r?.pulled && location.hash === hashAlAbrir && container.querySelector('#btn-new-project')) {
+      toast(`📥 ${r.pulled} cambio(s) del equipo.`);
+      renderQcHomeView(container, obraId);
+    }
+  });
+
   container.querySelector('#btn-adopt')?.addEventListener('click', async () => {
     for (const p of sinObra) await qcCommit(p.id, [{ op: 'set', table: 'proyectos', id: p.id, patch: { obraId } }], `Asociado a la obra "${obra.name}"`);
     toast('Listo.');

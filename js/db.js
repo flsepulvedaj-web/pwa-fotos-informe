@@ -1493,6 +1493,11 @@ export async function qcCommitEvent(event) {
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error);
 
+    // Versión de cada cambio: fecha y, si empatan, el id del evento. Así, si
+    // dos aparatos editan el mismo campo, en todos gana el mismo (el más
+    // nuevo) sin importar en qué orden lleguen los eventos al sincronizar.
+    const ver = `${String(event.ts).padStart(15, '0')}|${event.id}`;
+
     const getReq = events.get(event.id);
     getReq.onsuccess = () => {
       if (getReq.result) return; // ya estaba: no se repite
@@ -1513,19 +1518,40 @@ export async function qcCommitEvent(event) {
             createdAt: event.ts,
             createdBy: event.author,
           };
+          base.ver = base.ver || {};
           if (op.op === 'void') {
-            base.anulado = true;
-            base.motivoAnulacion = op.reason || '';
-            base.anuladoAt = event.ts;
-            base.anuladoBy = event.author;
+            if (!base.ver.__void || ver > base.ver.__void) {
+              base.anulado = true;
+              base.motivoAnulacion = op.reason || '';
+              base.anuladoAt = event.ts;
+              base.anuladoBy = event.author;
+              base.ver.__void = ver;
+            }
           } else {
-            base.data = { ...base.data, ...op.patch };
+            for (const [field, value] of Object.entries(op.patch || {})) {
+              if (!base.ver[field] || ver > base.ver[field]) {
+                base.data[field] = value;
+                base.ver[field] = ver;
+              }
+            }
           }
-          base.updatedAt = event.ts;
-          base.updatedBy = event.author;
+          if (!base.updatedAt || event.ts >= base.updatedAt) {
+            base.updatedAt = event.ts;
+            base.updatedBy = event.author;
+          }
+          if (event.ts < base.createdAt) {
+            base.createdAt = event.ts;
+            base.createdBy = event.author;
+          }
           records.put(base);
         };
       }
     };
   });
+}
+
+/** Ids de todos los eventos que este aparato ya tiene (de todos los proyectos). */
+export async function qcGetAllEventIds() {
+  const store = await tx('qcEvents', 'readonly');
+  return wrap(store.getAllKeys());
 }

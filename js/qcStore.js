@@ -76,6 +76,13 @@ function mergeOps(ops) {
   return [...byKey.values()];
 }
 
+// Quien quiera enterarse de cada cambio propio (ej. para subirlo a Drive).
+const commitListeners = new Set();
+export function onQcCommit(fn) {
+  commitListeners.add(fn);
+  return () => commitListeners.delete(fn);
+}
+
 // Los cambios se guardan de a uno: así cada evento enlaza con el anterior.
 let commitChain = Promise.resolve();
 
@@ -98,6 +105,7 @@ export function qcCommit(projectId, ops, note = '') {
     };
     event.hash = await sha256Hex(stableStringify(eventBody(event)));
     await qcCommitEvent(event);
+    commitListeners.forEach((fn) => fn(event));
     return event;
   });
   commitChain = run.catch(() => {});

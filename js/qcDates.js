@@ -162,6 +162,11 @@ export function ventanaActividad(actividad, etapa, proyecto, holidays) {
   if (plazo.tipo === 'paralelo' && recepcion) {
     return { desde: recepcion, hasta: addBusinessDays(recepcion, etapa.plazoRevisionDias || 10, holidays), origen: 'calculada' };
   }
+  if (plazo.tipo === 'evento') {
+    // "desde el informe" / "desde la re-entrega": dependen de fechas de la entrega.
+    const base = plazo.evento === 'informe' ? etapa?.fechaInforme : etapa?.fechaReentrega;
+    if (base) return { desde: base, hasta: addBusinessDays(base, plazo.dias, holidays), origen: 'calculada' };
+  }
   if (plazo.tipo === 'inicio' && proyecto?.fechaInicio) {
     return { desde: proyecto.fechaInicio, hasta: addCalendarDays(proyecto.fechaInicio, plazo.diasCorridos), origen: 'calculada' };
   }

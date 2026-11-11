@@ -409,17 +409,32 @@ export async function downloadDriveFile(fileId) {
  * creando duplicados — por eso ahora se listan todas las subcarpetas y se
  * compara en el navegador, más tolerante.
  */
-export async function findOrCreateDriveFolder(parentId, name) {
-  let existing = [];
-  try {
-    existing = await listDriveFolders(parentId);
-  } catch (err) {
-    console.error('No se pudo listar subcarpetas de Drive antes de crear una nueva:', err);
-  }
-  const target = name.trim().toLowerCase();
-  const match = existing.find((f) => f.name.trim().toLowerCase() === target);
-  if (match) return match;
-  return createDriveFolder(parentId, name);
+// Dos cosas evitan las carpetas repetidas (aparecían como "2026-09-03 (1)",
+// "Faenas Diarias (4)"…): (1) si dos subidas piden la misma carpeta a la vez,
+// comparten la misma búsqueda en vez de crearla cada una; (2) Drive tarda un
+// rato en "ver" una carpeta recién creada (la lista no la trae enseguida), así
+// que durante 30 minutos se recuerda la que ya se encontró o creó.
+const CARPETA_TTL_MS = 30 * 60 * 1000;
+const carpetasGuardadas = new Map();
+const carpetasEnCurso = new Map();
+
+export function findOrCreateDriveFolder(parentId, name) {
+  const key = `${parentId}|${name.trim().toLowerCase()}`;
+  const guardada = carpetasGuardadas.get(key);
+  if (guardada && guardada.hasta > Date.now()) return Promise.resolve(guardada.folder);
+  if (carpetasEnCurso.has(key)) return carpetasEnCurso.get(key);
+
+  const busqueda = (async () => {
+    // Si no se puede listar, NO se crea a ciegas: se avisa del error (crear sin saber
+    // si ya existe es justo lo que dejaba carpetas repetidas).
+    const existing = await listDriveFolders(parentId);
+    const target = name.trim().toLowerCase();
+    const folder = existing.find((f) => f.name.trim().toLowerCase() === target) || (await createDriveFolder(parentId, name));
+    carpetasGuardadas.set(key, { folder, hasta: Date.now() + CARPETA_TTL_MS });
+    return folder;
+  })().finally(() => carpetasEnCurso.delete(key));
+  carpetasEnCurso.set(key, busqueda);
+  return busqueda;
 }
 
 /**

@@ -2,6 +2,7 @@
 // vista (controlObraView.js) para poder probarla sola, mismo patrón que
 // aiAvance.js.
 import { ssmaEntryTotal } from './db.js';
+import { mergeEntryItemsWithTemplate } from './checklistItems.js';
 
 const DAY_MS = 86400000;
 
@@ -66,14 +67,23 @@ export function computeChecklistKPI(entries, types) {
   let cumplidos = 0;
   const incumplimientos = [];
 
+  const typeById = new Map(types.map((t) => [t.id, t]));
+
   for (const entry of entries) {
     const entryTime = new Date(entry.date).getTime();
-    entry.items.forEach((item, itemIndex) => {
+    // Se mira lo mismo que muestra la pantalla del checklist: las preguntas VIGENTES
+    // del tipo con su respuesta de ese día. Así no cuentan como pendientes las
+    // preguntas repetidas o viejas que quedaron guardadas en el registro del día.
+    const type = typeById.get(entry.checklistTypeId);
+    const items = type?.items?.length ? mergeEntryItemsWithTemplate(type, entry) : entry.items;
+    items.forEach((item, itemIndex) => {
       if (item.status && item.status !== 'N_A' && entryTime >= cutoff) {
         evaluated++;
         if (item.status === 'SI') cumplidos++;
       }
-      if (!item.status) {
+      // Solo cuenta como pendiente una pregunta que ese día ya existía (si se agregó
+      // a la lista después, el día viejo no tiene por qué tenerla contestada).
+      if (!item.status && item.existiaEnRegistro !== false) {
         incumplimientos.push({
           entryId: entry.id,
           itemIndex,

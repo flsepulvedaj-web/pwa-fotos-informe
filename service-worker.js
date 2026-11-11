@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v163';
+const CACHE_VERSION = 'v164';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -30,6 +30,7 @@ const APP_SHELL = [
   './js/controlChecklistTemplates.js',
   './js/controlScheduleParser.js',
   './js/controlDashboard.js',
+  './js/checklistItems.js',
   './js/controlSync.js',
   './js/costosDashboard.js',
   './js/costosSync.js',

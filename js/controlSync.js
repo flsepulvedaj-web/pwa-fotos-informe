@@ -22,6 +22,7 @@ import {
   updateChecklistEntry,
   getChecklistPhotosByEntry,
   addChecklistPhoto,
+  markChecklistPhotoUploaded,
   addScheduleSnapshot,
   getScheduleSnapshotsByObra,
 } from './db.js';
@@ -99,12 +100,45 @@ async function getChecklistDataFolder(folderId) {
  * Pancho lo notó al mirar el Drive directamente). */
 async function uploadOrReplaceJSON(folderId, filename, data) {
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-  const existing = await findFileByName(folderId, filename);
-  if (existing) {
-    await updateFileContent(existing.id, blob);
-  } else {
-    await uploadFile(folderId, blob, filename);
-  }
+  await subirOReemplazar(folderId, filename, blob);
+}
+
+// Sube un archivo con ese nombre a la carpeta, o reemplaza el que ya está —
+// SIN dejar copias. Antes, dos guardados seguidos (o uno justo después de otro)
+// buscaban el archivo, Drive todavía no lo mostraba y cada uno creaba el suyo:
+// quedaban "ssma-2026-11-11.json", "(1)" y "(2)" al mismo minuto. Ahora (1) los
+// guardados del mismo archivo hacen fila, y (2) se recuerda el id del archivo
+// que ya se subió, sin depender de que Drive lo muestre en la búsqueda.
+// `soloSiFalta`: no reemplaza el contenido (para las fotos, que no cambian).
+const archivoIds = new Map();
+const archivoFilas = new Map();
+
+function subirOReemplazar(folderId, filename, blob, { soloSiFalta = false } = {}) {
+  const key = `${folderId}|${filename}`;
+  const turno = (archivoFilas.get(key) || Promise.resolve())
+    .catch(() => {})
+    .then(async () => {
+      let id = archivoIds.get(key) || null;
+      if (!id) id = (await findFileByName(folderId, filename))?.id || null;
+      if (id && soloSiFalta) {
+        archivoIds.set(key, id);
+        return id;
+      }
+      if (id) {
+        try {
+          await updateFileContent(id, blob);
+        } catch (err) {
+          archivoIds.delete(key); // quizá lo borraron: la próxima vez se vuelve a buscar
+          throw err;
+        }
+      } else {
+        id = (await uploadFile(folderId, blob, filename)).id;
+      }
+      archivoIds.set(key, id);
+      return id;
+    });
+  archivoFilas.set(key, turno);
+  return turno;
 }
 
 /** Sube (best-effort) el registro de Personal de un día a Drive. No lanza
@@ -209,7 +243,16 @@ export async function syncChecklistTypesFromDrive(obraId, folderId) {
     types.map(async (type) => {
       try {
         const file = await findFileByName(dataFolder.id, `checklist-type-${type.key}.json`);
-        if (!file) return;
+        if (!file) {
+          // Nadie subió todavía la lista de preguntas de este tipo: se sube la de este
+          // teléfono, y los demás la adoptan. Sin esto cada teléfono usaba SUS propios
+          // códigos de pregunta y las respuestas de uno no calzaban con las del otro.
+          const publicadaEn = Date.now();
+          if (await uploadChecklistType(folderId, { ...type, updatedAt: publicadaEn })) {
+            await updateChecklistType(type.id, {}, { updatedAt: publicadaEn });
+          }
+          return;
+        }
         const data = await readJSONFile(file.id);
         if ((data.updatedAt || 0) > (type.updatedAt || 0)) {
           await updateChecklistType(type.id, { title: data.title, items: data.items }, { updatedAt: data.updatedAt });
@@ -321,13 +364,7 @@ export async function uploadChecklistPDF(folderId, typeTitle, date, blob) {
   try {
     const typeFolder = await findOrCreateDriveFolder(folderId, typeTitle);
     const dateFolder = await findOrCreateDriveFolder(typeFolder.id, date);
-    const filename = `Checklist ${typeTitle} ${date}.pdf`;
-    const existing = await findFileByName(dateFolder.id, filename);
-    if (existing) {
-      await updateFileContent(existing.id, blob);
-    } else {
-      await uploadFile(dateFolder.id, blob, filename);
-    }
+    await subirOReemplazar(dateFolder.id, `Checklist ${typeTitle} ${date}.pdf`, blob);
     return true;
   } catch (err) {
     console.error('No se pudo subir el PDF del checklist a Drive:', err);
@@ -347,7 +384,15 @@ export async function uploadChecklistPhoto(folderId, typeTitle, date, photo) {
   try {
     const typeFolder = await findOrCreateDriveFolder(folderId, typeTitle);
     const dateFolder = await findOrCreateDriveFolder(typeFolder.id, date);
-    await uploadFile(dateFolder.id, photo.blob, `foto_${photo.id}.jpg`);
+    // Si la foto ya está en Drive no se vuelve a subir, y al terminar se deja
+    // marcada como subida: antes NO se marcaba, y al abrir ese día otra vez la app
+    // creía que faltaba y la subía de nuevo (de ahí tantos "foto_xxx (1).jpg").
+    const fileId = await subirOReemplazar(dateFolder.id, `foto_${photo.id}.jpg`, photo.blob, { soloSiFalta: true });
+    try {
+      await markChecklistPhotoUploaded(photo.id, fileId);
+    } catch (err) {
+      console.error('No se pudo marcar la foto como subida:', err);
+    }
     return true;
   } catch (err) {
     console.error('No se pudo subir la foto del checklist a Drive:', err);
@@ -380,27 +425,37 @@ const PHOTO_SYNC_LOOKBACK_DAYS = 30;
  * una (son archivos pesados, no vale la pena saturar la conexión del
  * teléfono bajando varias a la vez).
  */
-export async function syncChecklistPhotosFromDrive(obraId, folderId) {
+export async function syncChecklistPhotosFromDrive(obraId, folderId, { allHistory = false } = {}) {
   if (!folderId) return 0;
   let types = await getChecklistTypesByObra(obraId);
   if (!types.length) {
     types = await Promise.all(DEFAULT_CHECKLIST_TYPES.map((t, i) => createChecklistType({ obraId, order: i, ...t })));
   }
 
+  // La sincronización automática mira solo los últimos días (para ser rápida);
+  // el botón "Sincronizar" revisa TODA la historia, así llegan también las fotos de días viejos.
   const cutoff = new Date(Date.now() - PHOTO_SYNC_LOOKBACK_DAYS * 86400000);
-  const cutoffISO = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
+  const cutoffISO = allHistory ? '0000-00-00' : `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
 
   const typeFolders = await listDriveFolders(folderId);
 
   // Cachea las fotos ya bajadas por checklist local, para no volver a
-  // consultar la base de datos por cada archivo.
-  const knownDriveIdsByChecklist = new Map();
-  async function alreadyHas(checklistId, fileId) {
-    if (!knownDriveIdsByChecklist.has(checklistId)) {
+  // consultar la base de datos por cada archivo. Una foto "ya está" si coincide
+  // el id de Drive, el nombre del archivo (si en Drive quedó repetida: mismo
+  // nombre, otro id) o el id propio de la foto (foto_<id>.jpg, las que sacó este mismo teléfono).
+  const knownByChecklist = new Map();
+  async function alreadyHas(checklistId, file) {
+    if (!knownByChecklist.has(checklistId)) {
       const local = await getChecklistPhotosByEntry(checklistId);
-      knownDriveIdsByChecklist.set(checklistId, new Set(local.map((p) => p.driveFileId).filter(Boolean)));
+      knownByChecklist.set(checklistId, {
+        driveIds: new Set(local.map((p) => p.driveFileId).filter(Boolean)),
+        names: new Set(local.map((p) => p.driveName).filter(Boolean)),
+        ids: new Set(local.map((p) => p.id)),
+      });
     }
-    return knownDriveIdsByChecklist.get(checklistId).has(fileId);
+    const known = knownByChecklist.get(checklistId);
+    const propio = /^foto_(.+)\.jpe?g$/i.exec(file.name || '')?.[1];
+    return known.driveIds.has(file.id) || known.names.has(file.name) || (!!propio && known.ids.has(propio));
   }
 
   // Junta, en paralelo, la lista de archivos-imagen a revisar de TODAS las
@@ -430,7 +485,7 @@ export async function syncChecklistPhotosFromDrive(obraId, folderId) {
 
   let added = 0;
   for (const { entry, file } of pending) {
-    if (await alreadyHas(entry.id, file.id)) continue;
+    if (await alreadyHas(entry.id, file)) continue;
     try {
       const blob = await downloadDriveFile(file.id);
       await addChecklistPhoto({
@@ -438,8 +493,11 @@ export async function syncChecklistPhotosFromDrive(obraId, folderId) {
         checklistId: entry.id,
         blob,
         driveFileId: file.id,
+        driveName: file.name,
       });
-      knownDriveIdsByChecklist.get(entry.id).add(file.id);
+      const known = knownByChecklist.get(entry.id);
+      known.driveIds.add(file.id);
+      known.names.add(file.name);
       added++;
     } catch (err) {
       if (err?.name === 'ConstraintError') continue; // ya la había bajado otra corrida en paralelo

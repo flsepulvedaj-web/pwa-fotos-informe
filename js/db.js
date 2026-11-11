@@ -868,7 +868,7 @@ export async function deleteChecklistEntry(id) {
   await wrap(store.delete(id));
 }
 
-export async function addChecklistPhoto({ id, checklistId, blob, driveFileId = '', createdAt }) {
+export async function addChecklistPhoto({ id, checklistId, blob, driveFileId = '', driveName = '', createdAt }) {
   const store = await tx('controlChecklistPhotos', 'readwrite');
   const photo = {
     // Id fijo opcional (mismo truco que costosFacturas): las que vienen de
@@ -881,6 +881,9 @@ export async function addChecklistPhoto({ id, checklistId, blob, driveFileId = '
     // Si vino de Drive (ver syncChecklistPhotosFromDrive en controlSync.js)
     // — para no volver a bajar la misma foto de nuevo.
     driveFileId,
+    // Nombre del archivo en Drive (foto_<id>.jpg): si en Drive quedó repetida la
+    // misma foto (dos archivos con el mismo nombre), no se baja dos veces.
+    driveName,
     createdAt: createdAt ?? Date.now(),
   };
   await wrap(store.add(photo));

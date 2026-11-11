@@ -16,6 +16,7 @@ import {
 } from '../db.js';
 import { DEFAULT_CHECKLIST_TYPES, CHECKLIST_STATUS } from '../controlChecklistTemplates.js';
 import { openFolderPicker, isSignedIn, getSignedInEmail } from '../googleDrive.js';
+import { mergeEntryItemsWithTemplate } from '../checklistItems.js';
 import { uploadChecklistEntry, syncChecklistFromDrive, uploadChecklistPhoto, syncChecklistPhotosFromDrive, uploadChecklistType, syncChecklistTypesFromDrive, uploadChecklistPDF } from '../controlSync.js';
 import { buildChecklistPDF } from '../checklistPdfExport.js';
 import { uploadObrasIndex } from '../obraSync.js';
@@ -117,8 +118,8 @@ export async function renderControlChecklistView(container, obraId) {
     (async () => {
       for (const photo of pending) {
         try {
-          const ok = await uploadChecklistPhoto(obra.checklistDriveFolderId, type.title, date, photo);
-          if (ok) await markChecklistPhotoUploaded(photo.id, 'uploaded'); // el id real de Drive no hace falta acá — con marcarla alcanza para no reintentarla
+          // uploadChecklistPhoto ya deja la foto marcada como subida (con su id de Drive).
+          await uploadChecklistPhoto(obra.checklistDriveFolderId, type.title, date, photo);
         } catch (err) {
           console.error('No se pudo subir una foto vieja del checklist:', err);
         }
@@ -201,7 +202,9 @@ export async function renderControlChecklistView(container, obraId) {
       const typesChanged = await syncChecklistTypesFromDrive(obraId, obra.checklistDriveFolderId);
       if (typesChanged) types = await getChecklistTypesByObra(obraId);
       const changed = await syncChecklistFromDrive(obraId, obra.checklistDriveFolderId);
-      const newPhotos = await syncChecklistPhotosFromDrive(obraId, obra.checklistDriveFolderId);
+      // El botón "Sincronizar" trae TODAS las fotos de la historia; la sincronización
+      // automática al abrir solo revisa los últimos días, para ser rápida.
+      const newPhotos = await syncChecklistPhotosFromDrive(obraId, obra.checklistDriveFolderId, { allHistory: !auto });
       if (typesChanged || changed || newPhotos) {
         entries = await getChecklistEntriesByType(activeTypeId);
         await loadEntryForDate(entry.date);
@@ -432,7 +435,10 @@ export async function renderControlChecklistView(container, obraId) {
     async function saveEntryItemAnswer(itemId, changes) {
       let stored = entry.items.find((it) => it.itemId === itemId);
       if (!stored) {
-        stored = { itemId, label: '', nota: '', status: null, resolved: false, observacion: '' };
+        // Se guarda también el TEXTO de la pregunta: así otro teléfono (con otros
+        // códigos internos) reconoce a qué pregunta corresponde esta respuesta.
+        const pregunta = type.items.find((t) => (t.itemId ?? t.id) === itemId);
+        stored = { itemId, label: pregunta?.label || '', nota: pregunta?.nota || '', status: null, resolved: false, observacion: '' };
         entry.items.push(stored);
       }
       Object.assign(stored, changes);
@@ -552,48 +558,10 @@ export async function renderControlChecklistView(container, obraId) {
   }
 
   paint();
-}
 
-/**
- * Junta, por `itemId`, el texto VIGENTE de la plantilla (label/nota — lo
- * que se está preguntando ahora) con la RESPUESTA guardada de ese día
- * (status/observacion/resolved) — así el texto se ve siempre actualizado,
- * incluso mirando un día viejo, sin tocar la respuesta que ya se guardó.
- * Recorre `type.items` (no `entry.items`) para que el orden y el set de
- * preguntas sea siempre el de la plantilla actual.
- */
-/** Compara textos de pregunta para el respaldo por texto de abajo — tolera
- * mayúsculas/espacios de más, no exige coincidencia carácter por carácter. */
-function sameLabel(a, b) {
-  const norm = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
-  return !!a && !!b && norm(a) === norm(b);
-}
-
-function mergeEntryItemsWithTemplate(type, entry) {
-  return type.items.map((templateItem) => {
-    const itemId = templateItem.itemId ?? templateItem.id;
-    // Primero por id — pero el id de una pregunta NO es 100% estable: cada
-    // teléfono generaba sus propias preguntas por defecto la primera vez
-    // que abría el checklist (antes de que existiera cualquier tipo en
-    // Drive), así que dos teléfonos podían terminar con ids distintos para
-    // "la misma" pregunta, y sincronizar el tipo desde Drive podía pisar
-    // el set de ids local con el de otro teléfono — dejando respuestas ya
-    // contestadas "sin contestar" para siempre en la pantalla, aunque el
-    // dato real seguía ahí guardado. Bug real: Sergio en Loncoche tenía
-    // días completos en Drive con "SI" en todo, pero a Pancho le salían
-    // como pendientes. Por eso, si no hay match por id, se respalda
-    // buscando por el TEXTO de la pregunta (que si no se editó, es el
-    // mismo) antes de darla por no contestada.
-    const stored = entry.items.find((it) => it.itemId === itemId) || entry.items.find((it) => sameLabel(it.label, templateItem.label));
-    return {
-      itemId,
-      label: templateItem.label,
-      nota: templateItem.nota || '',
-      status: stored?.status ?? null,
-      resolved: stored?.resolved ?? false,
-      observacion: stored?.observacion || '',
-    };
-  });
+  // Trae de Drive lo del resto del equipo apenas se abre la pantalla (antes solo se
+  // hacía con el botón "Sincronizar", y por eso las fotos de otros teléfonos no aparecían).
+  syncFromDrive({ auto: true });
 }
 
 function renderChecklistItemRow(item, index, highlighted) {

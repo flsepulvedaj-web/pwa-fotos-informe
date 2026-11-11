@@ -19,6 +19,11 @@ export async function renderProyectosHomeView(container) {
   const sections = [
     { route: protocolosOk ? '/protocolos' : null, icon: '📋', title: 'Protocolos', desc: 'Checklist de calidad + firma digital', ready: protocolosOk },
     { route: controlOk ? '/control' : null, icon: '🎛️', title: 'Control', desc: 'Programación, SSMA, actas y KPI de obra', ready: controlOk },
+    // Quien tiene Control de calidad pero no Control (ej. un mandante invitado
+    // a un proyecto) lo ve directo acá; el resto lo abre desde adentro de Control.
+    ...(allowed.includes('calidad') && !controlOk
+      ? [{ route: '/calidad', icon: '📐', title: 'Control de calidad', desc: 'Entregas, observaciones y plan de calidad', ready: true }]
+      : []),
     { route: null, icon: '📍', title: 'Zona', desc: 'Próximamente', ready: false },
   ];
 

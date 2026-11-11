@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v147';
+const CACHE_VERSION = 'v148';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -16,6 +16,10 @@ const APP_SHELL = [
   './js/reportFormats.js',
   './js/protocolTemplates.js',
   './js/aiAvance.js',
+  './js/qcDates.js',
+  './js/qcStore.js',
+  './js/qcTemplates.js',
+  './js/qcPlanParser.js',
   './js/aiPhotoReport.js',
   './js/controlChecklistTemplates.js',
   './js/controlScheduleParser.js',
@@ -51,6 +55,8 @@ const APP_SHELL = [
   './js/views/cameraView.js',
   './js/views/photoView.js',
   './js/views/allPhotosView.js',
+  './js/views/qcHomeView.js',
+  './js/views/qcProjectView.js',
   './js/views/exportView.js',
   './js/views/protocolHomeView.js',
   './js/views/protocolObraView.js',

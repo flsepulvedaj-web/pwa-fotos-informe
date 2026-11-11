@@ -35,7 +35,7 @@ const PROYECTOS_ICON = `
 // + placeholders "Próximamente" sin desarrollar todavía.
 const HUBS = [
   { id: 'banco', route: '/banco', icon: '🏦', title: 'Banco', desc: 'Avance de obra, informes técnicos y research', modules: ['fotos'] },
-  { id: 'proyectos', route: '/proyectos', icon: PROYECTOS_ICON, title: 'Proyectos', desc: 'Protocolos, Control y zonificación', modules: ['protocolos', 'control'] },
+  { id: 'proyectos', route: '/proyectos', icon: PROYECTOS_ICON, title: 'Proyectos', desc: 'Protocolos, Control y zonificación', modules: ['protocolos', 'control', 'calidad'] },
 ];
 
 /**

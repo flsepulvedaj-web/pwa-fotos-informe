@@ -1,6 +1,6 @@
 import { getAllObras, createObra } from '../db.js';
 import { isSignedIn, getSignedInEmail } from '../googleDrive.js';
-import { isAdmin, obrasForEmail, fetchPermissions, getCachedPermissions } from '../permissions.js';
+import { isAdmin, obrasForEmail, modulesForEmail, fetchPermissions, getCachedPermissions } from '../permissions.js';
 import { syncObrasFromDrive, uploadObrasIndex, deleteObraEverywhere } from '../obraSync.js';
 import { navigate } from '../router.js';
 import { promptDialog, confirmDialog, toast, escapeHTML, findSimilarObra } from '../utils.js';
@@ -30,12 +30,23 @@ export async function renderControlHomeView(container) {
   let obras = applyObraPermissions(await getAllObras(), getCachedPermissions());
 
   function paint() {
+    // Se calcula en cada pintado: los permisos pueden llegar de Drive después.
+    const calidadOk = modulesForEmail(email, getCachedPermissions()).includes('calidad');
     container.innerHTML = `
       <header class="app-header">
         <button class="icon-btn" id="btn-back-home" title="Volver al inicio">←</button>
         <span class="header-title">Control</span>
       </header>
       <main class="view-content">
+        ${calidadOk ? `
+          <button type="button" class="qc-entry-card" id="btn-calidad">
+            <span class="module-icon">📐</span>
+            <span>
+              <strong>Control de calidad de proyectos</strong>
+              <span class="qc-entry-desc">Revisión de diseños y trabajo de terceros: entregas, observaciones y plan de calidad</span>
+            </span>
+          </button>
+        ` : ''}
         ${obras.length ? `
           <section class="obra-grid">
             ${obras.map((o) => `
@@ -61,6 +72,7 @@ export async function renderControlHomeView(container) {
     `;
 
     container.querySelector('#btn-back-home').addEventListener('click', () => navigate('/proyectos'));
+    container.querySelector('#btn-calidad')?.addEventListener('click', () => navigate('/calidad'));
 
     container.querySelectorAll('.obra-tile').forEach((tile) => {
       tile.addEventListener('click', () => navigate(`/control/obra/${tile.dataset.obraId}`));

@@ -18,6 +18,11 @@ export const APP_MODULES = [
   { id: 'fotos', title: 'Avance de obra', desc: 'Fotos de obra → informe PDF' },
   { id: 'protocolos', title: 'Protocolos', desc: 'Checklist de calidad + firma digital' },
   { id: 'control', title: 'Control', desc: 'Programación, SSMA, actas y KPI de obra' },
+  // Control de calidad de proyectos (revisión del trabajo de un tercero:
+  // diseñador, consultor, contratista). Se abre desde adentro de Control, pero
+  // con permiso propio: quien participa de un proyecto sin ser del equipo (ej.
+  // el mandante) solo necesita este.
+  { id: 'calidad', title: 'Control de calidad de proyectos', desc: 'Entregas, observaciones, plan de calidad y firmas' },
   // Permiso propio y separado de Control a propósito: es información
   // sensible (plata del contrato) — no todo el que ve Control (ej. el ITO
   // en terreno) debería ver esto también.

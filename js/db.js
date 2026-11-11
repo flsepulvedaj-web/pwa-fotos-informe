@@ -1,7 +1,7 @@
 import { uuid } from './utils.js';
 
 const DB_NAME = 'fotos-informe-db';
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 
 // IndexedDB no permite `null`/`undefined` como clave de índice: los registros
 // con ese valor simplemente no se indexan. Usamos '' como id de la carpeta
@@ -174,6 +174,21 @@ function openDB() {
       // y su pool de muestras de mercado (propias + encontradas/pegadas).
       if (!db.objectStoreNames.contains('tasacionEstudios')) {
         db.createObjectStore('tasacionEstudios', { keyPath: 'id' });
+      }
+
+      // Módulo Control de calidad de proyectos (v12). Dos tablas genéricas:
+      // `qcEvents` es el historial (cada cambio es un evento que solo se
+      // agrega, nunca se edita ni se borra) y `qcRecords` es el estado actual
+      // de todas las tablas del módulo (proyectos, etapas, observaciones…),
+      // que se arma aplicando esos eventos. Ver js/qcStore.js.
+      if (!db.objectStoreNames.contains('qcEvents')) {
+        const qcEvents = db.createObjectStore('qcEvents', { keyPath: 'id' });
+        qcEvents.createIndex('by_projectId', 'projectId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('qcRecords')) {
+        const qcRecords = db.createObjectStore('qcRecords', { keyPath: 'key' });
+        qcRecords.createIndex('by_projectId', 'projectId', { unique: false });
+        qcRecords.createIndex('by_table', 'table', { unique: false });
       }
     };
 
@@ -1435,4 +1450,82 @@ export async function updateTasacionEstudio(id, changes) {
 export async function deleteTasacionEstudio(id) {
   const store = await tx('tasacionEstudios', 'readwrite');
   await wrap(store.delete(id));
+}
+
+// ---------- Control de calidad de proyectos (ver js/qcStore.js) ----------
+
+export async function qcGetEventsByProject(projectId) {
+  const store = await tx('qcEvents', 'readonly');
+  return wrap(store.index('by_projectId').getAll(projectId));
+}
+
+export async function qcGetEvent(id) {
+  const store = await tx('qcEvents', 'readonly');
+  return wrap(store.get(id));
+}
+
+export async function qcGetRecordsByProject(projectId) {
+  const store = await tx('qcRecords', 'readonly');
+  return wrap(store.index('by_projectId').getAll(projectId));
+}
+
+export async function qcGetRecordsByTable(table) {
+  const store = await tx('qcRecords', 'readonly');
+  return wrap(store.index('by_table').getAll(table));
+}
+
+/**
+ * Guarda un evento y aplica sus operaciones al estado actual, todo en UNA
+ * transacción: o quedan las dos cosas o ninguna. Si el evento ya existe (ej.
+ * llegó dos veces al sincronizar) no hace nada y devuelve false.
+ * `ops` son { op: 'set' | 'void', table, id, patch?, reason? } — no existe
+ * una operación de borrado: lo que no sirve se anula con un motivo.
+ */
+export async function qcCommitEvent(event) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['qcEvents', 'qcRecords'], 'readwrite');
+    const events = transaction.objectStore('qcEvents');
+    const records = transaction.objectStore('qcRecords');
+    let applied = false;
+
+    transaction.oncomplete = () => resolve(applied);
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+
+    const getReq = events.get(event.id);
+    getReq.onsuccess = () => {
+      if (getReq.result) return; // ya estaba: no se repite
+      applied = true;
+      events.add(event);
+      for (const op of event.ops) {
+        const key = `${event.projectId}|${op.table}|${op.id}`;
+        const recReq = records.get(key);
+        recReq.onsuccess = () => {
+          const current = recReq.result;
+          const base = current || {
+            key,
+            projectId: event.projectId,
+            table: op.table,
+            id: op.id,
+            data: {},
+            anulado: false,
+            createdAt: event.ts,
+            createdBy: event.author,
+          };
+          if (op.op === 'void') {
+            base.anulado = true;
+            base.motivoAnulacion = op.reason || '';
+            base.anuladoAt = event.ts;
+            base.anuladoBy = event.author;
+          } else {
+            base.data = { ...base.data, ...op.patch };
+          }
+          base.updatedAt = event.ts;
+          base.updatedBy = event.author;
+          records.put(base);
+        };
+      }
+    };
+  });
 }

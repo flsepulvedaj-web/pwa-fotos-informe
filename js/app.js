@@ -32,6 +32,8 @@ import { renderBancoHomeView } from './views/bancoHomeView.js';
 import { renderProyectosHomeView } from './views/proyectosHomeView.js';
 import { renderTasacionHomeView } from './views/tasacionHomeView.js';
 import { renderTasacionEstudioView } from './views/tasacionEstudioView.js';
+import { renderQcHomeView } from './views/qcHomeView.js';
+import { renderQcProjectView } from './views/qcProjectView.js';
 
 const appEl = document.getElementById('app');
 
@@ -88,6 +90,8 @@ registerRoute('/protocolos/obra/:obraId', ({ obraId }) => renderProtocolObraView
 registerRoute('/protocolos/instancia/:id', ({ id }) => renderProtocolFormView(appEl, id));
 
 // Módulo Control (programación, checklist diario, SSMA, actas, KPI).
+registerRoute('/calidad', () => renderQcHomeView(appEl));
+registerRoute('/calidad/proyecto/:id', ({ id }) => renderQcProjectView(appEl, id));
 registerRoute('/control', () => renderControlHomeView(appEl));
 registerRoute('/control/obra/:obraId', ({ obraId }) => renderControlObraView(appEl, obraId));
 registerRoute('/control/obra/:obraId/personal', ({ obraId }) => renderControlSSMAView(appEl, obraId));

@@ -108,7 +108,7 @@ export function escapeHTML(str) {
 
 /**
  * Modal genérico con uno o más campos de texto.
- * fields: [{ name, label, placeholder, value, type: 'text'|'textarea', maxlength }]
+ * fields: [{ name, label, placeholder, value, type: 'text'|'textarea'|'select'|'date'|'number'|'email', options (solo select: [{value,label}]), maxlength }]
  * Devuelve un objeto { [name]: value } al confirmar, o null si se cancela.
  */
 export function promptDialog({ title, fields, confirmLabel = 'Guardar', cancelLabel = 'Cancelar' }) {
@@ -123,7 +123,15 @@ export function promptDialog({ title, fields, confirmLabel = 'Guardar', cancelLa
         if (f.type === 'textarea') {
           return `${label}<textarea id="${id}" placeholder="${escapeHTML(f.placeholder || '')}" maxlength="${f.maxlength || 500}">${escapeHTML(f.value || '')}</textarea>`;
         }
-        return `${label}<input id="${id}" type="text" placeholder="${escapeHTML(f.placeholder || '')}" value="${escapeHTML(f.value || '')}" maxlength="${f.maxlength || 100}" />`;
+        if (f.type === 'select') {
+          const options = (f.options || [])
+            .map((o) => `<option value="${escapeHTML(o.value)}" ${o.value === f.value ? 'selected' : ''}>${escapeHTML(o.label)}</option>`)
+            .join('');
+          return `${label}<select id="${id}">${options}</select>`;
+        }
+        // 'date', 'number' y 'email' usan el input nativo del teléfono.
+        const inputType = ['date', 'number', 'email'].includes(f.type) ? f.type : 'text';
+        return `${label}<input id="${id}" type="${inputType}" placeholder="${escapeHTML(f.placeholder || '')}" value="${escapeHTML(f.value || '')}" maxlength="${f.maxlength || 100}" />`;
       })
       .join('');
 

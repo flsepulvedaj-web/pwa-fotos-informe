@@ -188,6 +188,16 @@ export async function renderQcProjectView(container, projectId) {
     `;
   }
 
+  /** Lista para el desplegable "Responsable": los cargos de los participantes
+   * del proyecto y los que ya aparecen en las actividades del plan. */
+  function opcionesResponsable(actual) {
+    const nombres = new Set();
+    data.participantes.filter((x) => !x.anulado).forEach((x) => x.cargo && nombres.add(x.cargo));
+    data.actividades.filter((x) => !x.anulado).forEach((x) => x.responsableTexto && nombres.add(x.responsableTexto));
+    if (actual) nombres.add(actual);
+    return [{ value: '', label: 'Sin responsable' }, ...[...nombres].sort((a, b) => a.localeCompare(b, 'es')).map((n) => ({ value: n, label: n }))];
+  }
+
   function renderActivity(a, etapa) {
     const v = ventanaActividad(a, etapa, data.proyecto, holidays());
     const plazo = a.plazoParseado || parsePlazo(a.plazoTexto);
@@ -275,7 +285,7 @@ export async function renderQcProjectView(container, projectId) {
             { name: 'estado', label: 'Estado', type: 'select', value: a.estado, options: ESTADOS_ACTIVIDAD },
             { name: 'fechaManual', label: 'Fecha límite puesta a mano (déjala vacía para usar el cálculo)', type: 'date', value: a.fechaManual || '' },
             { name: 'nota', label: 'Nota del control (qué se revisó, resultado)', value: a.nota || '' },
-            { name: 'responsableTexto', label: 'Responsable', value: a.responsableTexto || '' },
+            { name: 'responsableTexto', label: 'Responsable', type: 'select', value: a.responsableTexto || '', options: opcionesResponsable(a.responsableTexto) },
             { name: 'plazoTexto', label: 'Plazo (texto)', value: a.plazoTexto || '' },
           ],
         });

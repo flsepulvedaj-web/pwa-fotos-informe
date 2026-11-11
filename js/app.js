@@ -141,7 +141,11 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadController || reloadedForUpdate) return;
     const hash = location.hash;
-    const safeToReload = (hash === '' || hash === '#/' || hash.startsWith('#/fotos')) && !hash.includes('/camera');
+    // Pantallas de inicio y de listas (sin formularios a medio llenar).
+    const listScreens = ['', '#/', '#/banco', '#/proyectos', '#/control', '#/calidad', '#/protocolos', '#/costos', '#/rdi'];
+    const isObraHome = /^#\/control\/obra\/[^/]+$/.test(hash);
+    const isQcList = /^#\/control\/obra\/[^/]+\/calidad$/.test(hash);
+    const safeToReload = (listScreens.includes(hash) || isObraHome || isQcList || hash.startsWith('#/fotos')) && !hash.includes('/camera');
     if (!safeToReload) return;
     reloadedForUpdate = true;
     location.reload();

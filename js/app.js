@@ -37,6 +37,19 @@ import { renderQcProjectView } from './views/qcProjectView.js';
 
 const appEl = document.getElementById('app');
 
+// Cada vez que se cambia de pantalla se arma un contenedor NUEVO y se descarta
+// el anterior. Antes todas las pantallas escribían en el mismo contenedor, y una
+// pantalla que terminaba de cargar datos "en segundo plano" (permisos, Drive)
+// después de que ya habías entrado a otra le pintaba encima su propio contenido:
+// la lista de obras reaparecía sobre la obra, y se perdían los botones hasta
+// actualizar. Ahora esa pantalla vieja solo escribe en un contenedor ya descartado.
+function nuevaVista() {
+  const host = document.createElement('div');
+  host.className = 'view-host';
+  appEl.replaceChildren(host);
+  return host;
+}
+
 initSync();
 
 // Aviso flotante con cuántas fotos faltan por subir a Drive. La subida solo
@@ -65,66 +78,66 @@ onSyncChange(refreshUploadPill);
 refreshUploadPill();
 setInterval(refreshUploadPill, 5000);
 
-registerRoute('/', () => renderHomeView(appEl));
+registerRoute('/', () => renderHomeView(nuevaVista()));
 
 // Macro módulos (agrupan los módulos reales de abajo).
-registerRoute('/banco', () => renderBancoHomeView(appEl));
-registerRoute('/proyectos', () => renderProyectosHomeView(appEl));
+registerRoute('/banco', () => renderBancoHomeView(nuevaVista()));
+registerRoute('/proyectos', () => renderProyectosHomeView(nuevaVista()));
 
 // Módulo Avance de obra (ex "Proyectos"; fotos → informe PDF). La ruta
 // interna sigue siendo /fotos — solo cambió el nombre que ve el usuario.
-registerRoute('/fotos', () => renderFoldersView(appEl, ROOT_ID));
-registerRoute('/fotos/folder/:id', ({ id }) => renderFoldersView(appEl, id));
+registerRoute('/fotos', () => renderFoldersView(nuevaVista(), ROOT_ID));
+registerRoute('/fotos/folder/:id', ({ id }) => renderFoldersView(nuevaVista(), id));
 
 // Módulo Estudio de mercado (Banco): defensa de tasación por tipología.
-registerRoute('/banco/estudio-mercado', () => renderTasacionHomeView(appEl));
-registerRoute('/banco/estudio-mercado/:id', ({ id }) => renderTasacionEstudioView(appEl, id));
-registerRoute('/fotos/camera/:folderId', ({ folderId }) => renderCameraView(appEl, folderId === 'root' ? ROOT_ID : folderId));
-registerRoute('/fotos/photo/:id', ({ id }) => renderPhotoView(appEl, id));
-registerRoute('/fotos/todas/:id', ({ id }) => renderAllPhotosView(appEl, id === 'root' ? ROOT_ID : id));
+registerRoute('/banco/estudio-mercado', () => renderTasacionHomeView(nuevaVista()));
+registerRoute('/banco/estudio-mercado/:id', ({ id }) => renderTasacionEstudioView(nuevaVista(), id));
+registerRoute('/fotos/camera/:folderId', ({ folderId }) => renderCameraView(nuevaVista(), folderId === 'root' ? ROOT_ID : folderId));
+registerRoute('/fotos/photo/:id', ({ id }) => renderPhotoView(nuevaVista(), id));
+registerRoute('/fotos/todas/:id', ({ id }) => renderAllPhotosView(nuevaVista(), id === 'root' ? ROOT_ID : id));
 
 // Módulo Protocolos (checklist de calidad + firma digital).
-registerRoute('/protocolos', () => renderProtocolHomeView(appEl));
-registerRoute('/protocolos/en-curso', () => renderProtocolDraftsView(appEl));
-registerRoute('/protocolos/obra/:obraId', ({ obraId }) => renderProtocolObraView(appEl, obraId));
-registerRoute('/protocolos/instancia/:id', ({ id }) => renderProtocolFormView(appEl, id));
+registerRoute('/protocolos', () => renderProtocolHomeView(nuevaVista()));
+registerRoute('/protocolos/en-curso', () => renderProtocolDraftsView(nuevaVista()));
+registerRoute('/protocolos/obra/:obraId', ({ obraId }) => renderProtocolObraView(nuevaVista(), obraId));
+registerRoute('/protocolos/instancia/:id', ({ id }) => renderProtocolFormView(nuevaVista(), id));
 
 // Módulo Control (programación, checklist diario, SSMA, actas, KPI).
-registerRoute('/calidad', () => renderQcHomeView(appEl));
-registerRoute('/control/obra/:obraId/calidad', ({ obraId }) => renderQcHomeView(appEl, obraId));
-registerRoute('/calidad/proyecto/:id', ({ id }) => renderQcProjectView(appEl, id));
-registerRoute('/control', () => renderControlHomeView(appEl));
-registerRoute('/control/obra/:obraId', ({ obraId }) => renderControlObraView(appEl, obraId));
-registerRoute('/control/obra/:obraId/personal', ({ obraId }) => renderControlSSMAView(appEl, obraId));
-registerRoute('/control/obra/:obraId/checklist', ({ obraId }) => renderControlChecklistView(appEl, obraId));
-registerRoute('/control/obra/:obraId/checklist/camera', ({ obraId }) => renderChecklistCameraView(appEl, obraId));
-registerRoute('/control/obra/:obraId/avance', ({ obraId }) => renderControlAvanceView(appEl, obraId));
+registerRoute('/calidad', () => renderQcHomeView(nuevaVista()));
+registerRoute('/control/obra/:obraId/calidad', ({ obraId }) => renderQcHomeView(nuevaVista(), obraId));
+registerRoute('/calidad/proyecto/:id', ({ id }) => renderQcProjectView(nuevaVista(), id));
+registerRoute('/control', () => renderControlHomeView(nuevaVista()));
+registerRoute('/control/obra/:obraId', ({ obraId }) => renderControlObraView(nuevaVista(), obraId));
+registerRoute('/control/obra/:obraId/personal', ({ obraId }) => renderControlSSMAView(nuevaVista(), obraId));
+registerRoute('/control/obra/:obraId/checklist', ({ obraId }) => renderControlChecklistView(nuevaVista(), obraId));
+registerRoute('/control/obra/:obraId/checklist/camera', ({ obraId }) => renderChecklistCameraView(nuevaVista(), obraId));
+registerRoute('/control/obra/:obraId/avance', ({ obraId }) => renderControlAvanceView(nuevaVista(), obraId));
 
 // Módulo Costos (presupuesto, modificaciones, facturación, reembolsos) —
 // "dato rosa": vive adentro de Control (se entra desde la obra de Control,
 // no tiene tarjeta propia en el hub de Proyectos), pero sigue protegido con
 // su propio permiso — ver nota en controlObraView.js.
-registerRoute('/costos/obra/:obraId', ({ obraId }) => renderCostosObraView(appEl, obraId));
+registerRoute('/costos/obra/:obraId', ({ obraId }) => renderCostosObraView(nuevaVista(), obraId));
 
 // Módulo RDI (requerimientos de información al mandante) — mismo criterio
 // que Costos: se entra desde la obra de Control, no tiene tarjeta propia
 // en el hub de Proyectos, y sigue protegido con su propio permiso.
-registerRoute('/rdi/obra/:obraId', ({ obraId }) => renderRdiObraView(appEl, obraId));
+registerRoute('/rdi/obra/:obraId', ({ obraId }) => renderRdiObraView(nuevaVista(), obraId));
 
 // Módulos chicos (directorio, sin permiso propio — ver nota en controlObraView.js).
-registerRoute('/subcontratos/obra/:obraId', ({ obraId }) => renderSubcontratosView(appEl, obraId));
-registerRoute('/organismos/obra/:obraId', ({ obraId }) => renderOrganismosView(appEl, obraId));
+registerRoute('/subcontratos/obra/:obraId', ({ obraId }) => renderSubcontratosView(nuevaVista(), obraId));
+registerRoute('/organismos/obra/:obraId', ({ obraId }) => renderOrganismosView(nuevaVista(), obraId));
 
 // Informe Semanal (acta + compilado + PDF) — reemplaza el placeholder
 // "Actas de reunión". Mismo patrón 2 niveles que Protocolos.
-registerRoute('/informe-semanal/obra/:obraId', ({ obraId }) => renderInformeSemanalObraView(appEl, obraId));
-registerRoute('/informe-semanal/instancia/:id', ({ id }) => renderInformeSemanalFormView(appEl, id));
-registerRoute('/costos/obra/:obraId/contrato', ({ obraId }) => renderCostosContratoView(appEl, obraId));
-registerRoute('/costos/obra/:obraId/modificaciones', ({ obraId }) => renderCostosModificacionesView(appEl, obraId));
-registerRoute('/costos/obra/:obraId/facturacion', ({ obraId }) => renderCostosFacturacionView(appEl, obraId));
-registerRoute('/costos/obra/:obraId/reembolsos', ({ obraId }) => renderCostosReembolsosView(appEl, obraId));
+registerRoute('/informe-semanal/obra/:obraId', ({ obraId }) => renderInformeSemanalObraView(nuevaVista(), obraId));
+registerRoute('/informe-semanal/instancia/:id', ({ id }) => renderInformeSemanalFormView(nuevaVista(), id));
+registerRoute('/costos/obra/:obraId/contrato', ({ obraId }) => renderCostosContratoView(nuevaVista(), obraId));
+registerRoute('/costos/obra/:obraId/modificaciones', ({ obraId }) => renderCostosModificacionesView(nuevaVista(), obraId));
+registerRoute('/costos/obra/:obraId/facturacion', ({ obraId }) => renderCostosFacturacionView(nuevaVista(), obraId));
+registerRoute('/costos/obra/:obraId/reembolsos', ({ obraId }) => renderCostosReembolsosView(nuevaVista(), obraId));
 
-registerRoute('/usuarios', () => renderPermissionsAdminView(appEl));
+registerRoute('/usuarios', () => renderPermissionsAdminView(nuevaVista()));
 
 registerNotFound(() => navigate('/'));
 

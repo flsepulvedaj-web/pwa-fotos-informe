@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v157';
+const CACHE_VERSION = 'v158';
 const CACHE_NAME = `fotos-informe-shell-${CACHE_VERSION}`;
 
 const APP_SHELL = [
@@ -95,7 +95,21 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches
+      .open(CACHE_NAME)
+      .then((cache) =>
+        // `cache: 'reload'` salta la copia que guarda el navegador (GitHub Pages
+        // la deja 10 minutos): sin esto una versión nueva podía quedar con
+        // archivos viejos adentro.
+        Promise.all(
+          APP_SHELL.map(async (url) => {
+            const res = await fetch(new Request(url, { cache: 'reload' }));
+            if (!res.ok) throw new Error(`No se pudo descargar ${url}`);
+            await cache.put(url, res);
+          })
+        )
+      )
+      .then(() => self.skipWaiting())
   );
 });
 

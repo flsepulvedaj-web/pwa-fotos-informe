@@ -3,7 +3,7 @@ import { modulesForEmail, getCachedPermissions } from '../permissions.js';
 import { qcListProjects, qcLoadProject, qcCreateProject, qcCommit } from '../qcStore.js';
 import { TEMPLATES, catalogOps, templateStageOps } from '../qcTemplates.js';
 import { parseQualityPlanDocx, planToProjectOps } from '../qcPlanParser.js';
-import { getObra } from '../db.js';
+import { getObra, getAllObras } from '../db.js';
 import { qcSyncAll } from '../qcSync.js';
 import { navigate } from '../router.js';
 import { promptDialog, toast, escapeHTML } from '../utils.js';
@@ -42,7 +42,12 @@ export async function renderQcHomeView(container, obraId) {
   const projects = await qcListProjects(obraId);
   // Proyectos creados con la primera versión del módulo, que todavía no
   // pertenecen a ninguna obra: se ofrece asociarlos a esta.
-  const sinObra = obraId ? (await qcListProjects()).filter((p) => !p.obraId) : [];
+  // También cuenta el proyecto cuya obra ya no existe (se borró la obra).
+  let sinObra = [];
+  if (obraId) {
+    const obraIds = new Set((await getAllObras()).map((o) => o.id));
+    sinObra = (await qcListProjects()).filter((p) => !p.obraId || !obraIds.has(p.obraId));
+  }
   const summaries = await Promise.all(
     projects.map(async (p) => {
       const data = await qcLoadProject(p.id);

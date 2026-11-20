@@ -74,8 +74,12 @@ export async function fetchPermissions() {
   try {
     const file = await findFileByName(DEFAULT_ROOT_FOLDER.id, FILE_NAME);
     if (!file) {
-      saveCache({});
-      return {};
+      // Si el archivo no está (alguien lo movió o lo borró por error, como pasó el
+      // 2026-11-20: quedó suelto en la raíz de Drive y nadie pudo entrar), NO se borra
+      // lo que ya se sabía: se siguen usando los últimos permisos conocidos de este
+      // aparato. Solo se parte de cero si nunca hubo nada.
+      console.warn('No se encontró permissions.json en la carpeta raíz de Drive: se usan los permisos guardados en este aparato.');
+      return loadCache();
     }
     const blob = await downloadDriveFile(file.id);
     const data = JSON.parse(await blob.text());
